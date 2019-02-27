@@ -1,0 +1,88 @@
+---
+title: "project"
+author: "Qiang Fang"
+date: "February 25, 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(VIM)
+library(corrplot)
+#library(ggcorrplot)
+#library(ggthemes)
+```
+
+```{r}
+movie <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/movie_metadata.csv")
+```
+
+```{r}
+oscar <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/academy_awards.csv")
+```
+
+```{r}
+deflator <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736.csv", skip = 4)
+```
+
+```{r}
+sum(duplicated(movie))
+movie <- unique(movie)
+```
+
+```{r}
+summary(movie)
+missing_values <- aggr(movie, sortVars = T, prop = T, sortCombs = T, cex.lab = 1.5, cex.axis = .6, cex.numbers = 5, combined = F, gap = -.2)
+```
+
+```{r}
+movie1 <- filter(movie, !is.na(gross))
+
+```
+
+```{r}
+ggplot(data = movie1, mapping = aes(x = budget, y = gross)) +
+  geom_point() +
+  geom_smooth()
+```
+
+
+```{r}
+ggplot(data = movie1, mapping = aes(x = imdb_score, y = gross)) +
+  geom_point() +
+  geom_jitter() +
+  geom_smooth()
+```
+
+
+```{r}
+movie1 %>%
+  rowwise() %>%
+  transmute(l=length(str_split(genres,"\\|", simplify = TRUE))
+            ) %>%
+  ungroup %>%
+  summarise(max(l))
+
+```
+
+
+```{r}
+
+genre_gross <- movie1 %>%
+  select(gross, genres) %>%
+  separate(genres, into=c("c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8"), sep="\\|") %>%
+  gather(c1, c2, c3, c4, c5, c6, c7, c8, key = "c", value = "genre") %>%
+  filter(!is.na(genre)) %>%
+  group_by(genre) %>%
+  summarise(avg_gross = mean(gross)) %>%
+  mutate(genre = reorder(genre,avg_gross))
+```
+
+```{r}
+ggplot(data = genre_gross, mapping = aes(x = genre, y = avg_gross)) +
+  geom_col() +
+  coord_flip()
+```
+
