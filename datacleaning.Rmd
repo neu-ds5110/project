@@ -1,0 +1,101 @@
+---
+title: "Project Data Cleaning"
+author: "Katrina Truebebach"
+date: "March 4, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(stringr)
+#library(VIM)
+#library(corrplot)
+```
+
+## Download Data
+
+Keep different file paths for different people
+```{r import}
+# Qiang's File Paths
+#movie <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/movie_metadata.csv")
+#oscar <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/academy_awards.csv")
+#deflator <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736.csv", skip = 4)
+
+# Katrina's File Paths
+movie <- read_csv("~/DS5110/data/movie_metadata.csv")
+oscar <- read_csv("~/DS5110/data/academy_awards.csv")
+  # make sure to filter by winners (Winner == 1) and by Actor/Actress and Director
+deflator <- read_csv("~/DS5110/data/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736.csv", skip = 4)
+```
+
+## Movie Data Cleaning
+
+Drop some variables we are not using 
+```{r movie_drop}
+movie <- movie %>% select(-c(color, contains('facebook'), starts_with('num_voted'), 
+                             contains('link'), aspect_ratio, facenumber_in_poster,
+                             plot_keywords))
+```
+
+Clean up string variables: trim white space from all character variables 
+```{r movie_string_clean}
+movie <- movie %>%
+  mutate_if(is.character, str_trim)
+```
+
+Drop rows that are entirely duplicated 
+```{r movie_duplicate_drop}
+sum(duplicated(movie)) # 120
+movie <- unique(movie)
+```
+
+Tidy genre column. Separate into 8 columns: this is the maximum number of genres a movie has. Many movies will have many of these columns as NA.  
+```{r movie_genre_tidy}
+movie <- movie %>%
+  separate(genres, into=c("g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"), sep="\\|")
+```
+
+Exclude observations with missing revenue as this is our dependent variable.
+```{r movie_grossna_drop}
+movie <- filter(movie, !is.na(gross))
+```
+
+## Deflator Data Cleaning
+
+Drop columns we don't need. Also drop columns that are always NA (drops 1960, 2018, and X64)
+```{r deflator_drop}
+# don't need
+deflator <- deflator %>% select(-`Country Code`, -`Indicator Name`, -`Indicator Code`)
+
+# always NA
+deflator <- deflator %>% select_if(function(x) {!all(is.na(x))})
+```
+
+Reshape such that one column for year (currently each year is a variable). Make tidy.
+```{r deflator_tidy}
+# get list of year columns (numeric columns)
+year_cols <- names(deflator)[unlist(lapply(deflator, is.numeric))]
+# gather: one year column
+deflator <- deflator %>%
+  gather(year_cols, key = 'year', value = 'deflator')
+
+# convert year column into numeric
+deflator <- deflator %>%
+  mutate(year = as.numeric(year))
+```
+
+## Merge Movie and Deflator
+
+```{r movie_deflator_merge}
+# merging deflator and movie by year and country 
+
+# use anti join to see if there are any country-year combinations that we do not have deflators for 
+
+```
+
+Make money values (budget, gross revenue) real dollars
+__are these foreign values in a different currency? Investigate__
+```{r real}
+```
