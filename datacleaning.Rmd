@@ -10,6 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(tidyverse)
 library(stringr)
+library(lubridate)
+library(qdapTools)
 #library(VIM)
 #library(corrplot)
 ```
@@ -29,9 +31,7 @@ Keep different file paths for different people
 movie <- read_csv("~/DS5110/data/movie_metadata.csv")
 #oscar <- read_csv("~/DS5110/data/academy_awards.csv")
   # make sure to filter by winners (Winner == 1) and by Actor/Actress and Director
-deflator <- read_csv("~/DS5110/data/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736.csv", skip = 4)
-exchange <- read_csv("~/DS5110/data/DP_LIVE_06032019024237951.csv")
-country_codes <- read_csv("~/DS5110/data/country_codes.csv")
+deflator <- read_csv("~/DS5110/data/GDPDEF.csv")
 ```
 
 ## Movie Data Cleaning
@@ -46,7 +46,7 @@ movie <- movie %>% select(-c(color, contains('facebook'), starts_with('num_voted
 # rename year variable so matches with keys in other datasets
 # also rename country to country_name. 
   # When merge with othere datasets later, need to differentiate between country abbreviations and full names
-movie <- movie %>% rename(year = title_year) %>% rename(country_name = country)
+movie <- movie %>% rename(year = title_year)
 ```
 
 Clean up string variables: trim white space from all character variables 
@@ -61,10 +61,14 @@ sum(duplicated(movie)) # 120
 movie <- unique(movie)
 ```
 
-Tidy genre column. Separate into 8 columns: this is the maximum number of genres a movie has. Many movies will have many of these columns as NA.  
+Tidy genre column. Create one column per genre such that each is a dummy variable. One movie can be multiple genres.
+This is tidy data, but for visualizations we will likely have to gather the various genre columns and make the data untidy to use genre as an aesthetic.
 ```{r movie_genre_tidy}
-movie <- movie %>%
-  separate(genres, into=c("g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8"), sep="\\|")
+# use mtabulate from qdapTools package to create dummies for each genre 
+genre_dummies <- mtabulate(strsplit(movie$genres, '\\|'))
+
+# cbind with original data
+movie <- cbind(movie, genre_dummies)
 ```
 
 Exclude observations with missing revenue as this is our dependent variable.
@@ -72,128 +76,56 @@ Exclude observations with missing revenue as this is our dependent variable.
 movie <- filter(movie, !is.na(gross))
 ```
 
-
-In country variable, there is one instance of 'Official site' and one instance of 'New Line'. These movies are 'Country Strong' and 'Town & Country'. I manually checked and this is a data error and the movies are both US films.
-```{r movie_datafix}
-movie <- movie %>%
-  mutate(country_name = ifelse(country_name == "Official site", 'USA', country_name),
-         country_name = ifelse(country_name == 'New Line', 'USA', country_name))
+Exclude non-US movies. Tried to include these and apply a country-specific deflator to make real and then use exchange rates to get US dollars. However, after manually checking some IMDB pages, we realized that some movies that are made in foreign countries still report US Dollars and some don't. The unit isn't recorded, so there is no way to check this.  
+Thus, we are excluding non-US movies to avoid misleading relationships between variables. 
+```{r movie_nonus}
+movie <- movie %>% filter(country == "USA")
 ```
 
 ## Deflator Data Cleaning
 
-The deflator data is an implicit GDP deflator measured as ratio of GDP in local currency to GDP in constant local currency (nominal / real).
-
-Drop columns we don't need. Also drop columns that are always NA (drops 1960, 2018, and X64). Rename columns.
-```{r deflator_drop}
-# drop columns we don't need
-deflator <- deflator %>% select(-`Indicator Name`, -`Indicator Code`)
-
-# drop columns that are always NA
-deflator <- deflator %>% select_if(function(x) {!all(is.na(x))})
-
-# rename country variable so consistent with country variable in movie dataset
-deflator <- deflator %>% rename(country_name = `Country Name`, country_abbr = `Country Code`)
-```
-
-Reshape such that one column for year (currently each year is a variable). Make tidy.
-```{r deflator_tidy}
-# get list of year columns (numeric columns)
-year_cols <- names(deflator)[unlist(lapply(deflator, is.numeric))]
-# gather: one year column
+Basic cleaning: rename columns and create date variable
+```{r deflator_clean}
 deflator <- deflator %>%
-  gather(year_cols, key = 'year', value = 'deflator')
-
-# convert year column into numeric
-deflator <- deflator %>%
-  mutate(year = as.numeric(year))
+  # rename columns
+  rename(date = DATE, gdpd = GDPDEF) %>%
+  # convert date column into a datetime 
+  mutate(date = mdy(date))
 ```
 
-## Clean Exchange Rate Data
-
-Drop unnecessary columns and rename some columns.
-```{r exchange_drop}
-# keep location, time, and value columns
-exchange <- exchange %>% select(LOCATION, TIME, Value) %>%
-  # rename variables so consistent with other datasets
-  rename(country_abbr = LOCATION,
-         year = TIME, 
-         exrate = Value)
+Data is quarterly, but movie data is annual. Take average across quarters to get an annual deflator.
+```{r deflator_annual}
+deflator <- deflator %>% 
+  # get year variable
+  mutate(year = year(date)) %>% 
+  # mean across quarters
+  group_by(year) %>% 
+  summarize(gdpd = mean(gdpd)) %>%
+  # divide GDPD by 100 
+  # (calculated as real / nominal * 100, so need to divide by 100 to reverse the conversion)
+  mutate(gdpd = gdpd / 100)
 ```
 
+## Merge Movie and Deflator Data by Year
 
-## Clean Country Code Data
-
-Drop unnecessary columns and rename columns. Keep official country name in English and the corresponding abbreviation.
-```{r country_code_drop}
-country_codes <- country_codes %>%
-  # keep country name and code (english) columns
-  select(official_name_en, `ISO3166-1-Alpha-3`) %>%
-  # rename 
-  rename(country_name = official_name_en, country_abbr = `ISO3166-1-Alpha-3`) 
-```
-
-Rename some of the country names to match the country names in movie dataset
-```{r country_recode_countrylabel}
-country_codes <- country_codes %>%
-  mutate(country_name = ifelse(str_detect(country_name, 'Hong Kong'), 'Hong Kong', country_name),
-         country_name = ifelse(str_detect(country_name, 'United Kingdom'), 'UK', country_name),
-         country_name = ifelse(str_detect(country_name, 'United States of America'), 'USA', country_name),
-         country_name = ifelse(str_detect(country_name, 'Republic of Korea'), 'South Korea', country_name),
-         # Czech Republic also known as Czechia 
-         country_name = ifelse(str_detect(country_name, 'Czech'), 'Czech Republic', country_name),
-         country_name = ifelse(str_detect(country_name, 'Iran'), 'Iran', country_name),
-         country_name = ifelse(str_detect(country_name, 'Russia'), 'Russia', country_name),
-         country_name = ifelse(str_detect(country_name, 'Taiwan'), 'Iran', country_name),
-         country_name = ifelse(str_detect(country_name, 'Iran'), 'Iran', country_name))
-
-```
-
-## Merge Movie, Deflator, and Exchange Rate
-
-Merge country codes and movie dataset so can create a country abbreviations column for movie. Then can merge with exchange and deflator on that new column.  
-First, use anti-join to look at any non-matches. They are Taiwan and West Germany. Since we do not have exchange rate data for these countries and they only represent 3 observations, we use an inner join to drop the non-mathces. 
-```{r country_code_merge}
-# check if any non-merges with anti-join: instances of country_name in movie that do not exist in country_codes
-# Taiwan and West Germany. Do not have country codes for these but also do not have exchange rates. Excluding these three observations
-movie %>% anti_join(country_codes, by = 'country_name') %>% select(country_name)
-
-# merge with inner join. Drop Germany and Taiwan observations i.e. any observations that do not exist in both datasets
-movie <- movie %>% 
-  inner_join(country_codes, by = 'country_name')
-
-```
-
-Use new country_abbr column in movies to merge in both deflator and exchange rate dataset by country and year.  
-First, use anti-join to look at any non-matches.
-Left join such that only include deflators and exchange rates from countries and years in which we have a movie observation.
 ```{r movie_deflator_merge}
+# check if there are any non-matches
+nonmatch <- movie %>% anti_join(deflator, by = 'year') 
+unique(nonmatch$year)
+  # years before 1947, which is when the deflator data starts. 
+nonmatch %>% count()
+  # 13 observations. OK to drop. 
 
-## PICK UP HERE: investigate these non matches and decide what to do
-  # check years: movie data back to 1920s sometimes but we don't have exchange etc data back that far
-    # how many observations? Ok to drop?
-  # any countries in the appropriate years?
-
-# check for non-matches
-nonmatch <- movie %>% anti_join(exchange, by = c('year', 'country_abbr')) %>% select(year, country_abbr, country_name)
-unique(nonmatch$country_abbr)
-
-nonmatch <- movie %>% anti_join(deflator, by = c('year', 'country_abbr')) %>% select(year, country_abbr, country_name)
-unique(nonmatch$country_abbr)
-
-# merge: WHAT KIND OF MERGE?
-#movie <- movie %>% 
-#  # merge deflator dataset by year and country abbreviation
-#  left_join(deflator, by = c('year', 'country_abbr')) %>%
-#  # merge exchange dataset by year and country abbreviation
-#  left_join(exchange, by = c('year', 'country_abbr'))
-
+# merge using an inner join. Want to drop any observations in movie that do not have a year in deflator (as above, 13 observations)
+movie <- movie %>% inner_join(deflator, by = 'year')
 ```
 
-## Convert nominal local currency values into US real dollars.
-Budget and gross revenue.
+## Convert nominal US dollars to real dollars
 
-Process: convert local currency into real local currency (real local currency = local currency / local deflator). Then convert real local currency into real US dollars (real local currency / exchange rate).   
+Use the deflator. Real = nominal / GDPD  
 
-```{r real}
+```{r deflate}
+movie <- movie %>%
+  mutate(real_budget = budget / gdpd,
+         real_gross = gross / gdpd)
 ```
