@@ -14,6 +14,7 @@ library(lubridate)
 library(qdapTools)
 #library(VIM)
 #library(corrplot)
+
 ```
 
 __Discovery__: The deflator data in the World Bank dataset is in local currency. The budget and revenue data in the movie dataset is also in local currency. Thus I needed to introduce an exchange rate dataset so that everything is in real US dollars.
@@ -29,7 +30,7 @@ Keep different file paths for different people
 
 # Katrina's File Paths
 movie <- read_csv("~/DS5110/data/movie_metadata.csv")
-#oscar <- read_csv("~/DS5110/data/academy_awards.csv")
+oscar <- read_csv("~/DS5110/data/academy_awards.csv")
   # make sure to filter by winners (Winner == 1) and by Actor/Actress and Director
 deflator <- read_csv("~/DS5110/data/GDPDEF.csv")
 ```
@@ -69,6 +70,9 @@ genre_dummies <- mtabulate(strsplit(movie$genres, '\\|'))
 
 # cbind with original data
 movie <- cbind(movie, genre_dummies)
+
+# make a tibble again
+movie <- as.tibble(movie)
 ```
 
 Exclude observations with missing revenue as this is our dependent variable.
@@ -106,6 +110,95 @@ deflator <- deflator %>%
   mutate(gdpd = gdpd / 100)
 ```
 
+## Oscar Data Cleaning
+
+Rename all variables to be lower case  
+```{r oscar_drop}
+# rename variables to lower case 
+oscar <- oscar %>% rename_all(tolower)
+```
+
+Clean the year variable: first few Oscars were two years (1930/1931 for example). Just take first year.
+
+Year matters so that we can see how many Oscars they had won when each movie in the movie dataset was released. An actor earlier in their career with no Oscars would liekly have less of an impact on movie revenue than that same actor later in their career after 3 Oscars. 
+  
+Does not matter which film they won the award for.
+
+```{r oscar_year}
+oscar <- oscar %>% 
+  # get first year if year variable has a / aka has two years
+  mutate(year = ifelse(str_detect(year, '/'), str_split(year, '/', simplify = T)[,1], year),
+    # make numeric instead of character
+    year = as.numeric(year))
+```
+
+Filter: only include winners and acting and directing awards. One person can be an actor and a director, so make sure to differentiate.  
+There are several types of acting and directing awards: make sure to get them all (but not art director etc.)
+
+```{r oscar_filter}
+actors <- oscar %>% 
+  # winners only
+  filter(winner == 1) %>%
+  # acting and directing awards only 
+  filter(str_detect(award, 'Actor') | str_detect(award, 'Actress'))
+
+directors <- oscar %>% 
+  # winners only
+  filter(winner == 1) %>%
+  # acting and directing awards only 
+  filter(str_detect(award, 'Directing'))
+
+# check these are the awards we want
+unique(actors$award)
+unique(directors$award)
+```
+
+Cleaning issue: For the first few years, the dataset lists director name under 'name' for the directing awards, as is logical. However, it switches in 1930 such that 'name' is the film name and 'film' is the director name
+
+```{r oscar_directorclean}
+directors %>% 
+  mutate(name = ifelse(year >= 1930, film, name))
+```
+
+Expand the actor and director datasets so have full time series for each Actor. Mark when in that time series they earned each Oscar. Then can cumulatively sum so know number of Oscars at each year. 
+```{r oscar_expand}
+
+# actors
+actors <- actors %>% 
+  # drop unnecessary columns
+  select(-c(ceremony, award, winner, film)) %>% 
+  # indicate that they won an Oscar in this year 
+  mutate(oscar = 1) %>% 
+  # expand dataset so one year per actor 
+  complete(year, name) %>%
+  # fill in oscar dummy with zero when it is not 1 
+  mutate(oscar = ifelse(is.na(oscar), 0, oscar))
+
+# directors
+directors <- directors %>% 
+  # drop unnecessary columns
+  select(-c(ceremony, award, winner, film)) %>% 
+  # indicate that they won an Oscar in this year 
+  mutate(oscar = 1) %>% 
+  # expand dataset so one year per actor 
+  complete(year, name) %>%
+  # fill in oscar dummy with zero when it is not 1 
+  mutate(oscar = ifelse(is.na(oscar), 0, oscar))
+```
+
+Cumulatively sum number of Oscars per actor/actress and director
+```{r oscar_count}
+actors <- actors %>%
+  group_by(name) %>% 
+  mutate(total_oscars = cumsum(oscar)) %>%
+  select(-oscar)
+
+directors <- directors %>%
+  group_by(name) %>% 
+  mutate(total_oscars = cumsum(oscar)) %>%
+  select(-oscar)
+```
+
 ## Merge Movie and Deflator Data by Year
 
 ```{r movie_deflator_merge}
@@ -129,3 +222,32 @@ movie <- movie %>%
   mutate(real_budget = budget / gdpd,
          real_gross = gross / gdpd)
 ```
+
+## Merge Movie and Actor Oscar Data 
+
+Merge 4 times: once for each of the 3 actor columns in the movie dataset and once for director. Get the total number of oscars for that person at the time of the movie release.  
+Left join so that we keep the rows with actors and directors that do not have Oscars
+```{r movie_actor_merge}
+movie <- movie %>% 
+  # actor merge
+  # rename because will merge in more variables with identical name
+  left_join(actors, by = c('actor_1_name' = 'name', 'year')) %>%
+  rename(total_oscars_actor1 = total_oscars) %>% 
+  left_join(actors, by = c('actor_2_name' = 'name', 'year')) %>%
+  rename(total_oscars_actor2 = total_oscars) %>%
+  left_join(actors, by = c('actor_3_name' = 'name', 'year'), suffix = c('', '_actor3')) %>%
+  rename(total_oscars_actor3 = total_oscars) %>%
+  # director merge
+  left_join(directors, by = c('director_name' = 'name', 'year'), suffix = c('', '_director')) %>%
+  rename(total_oscars_director = total_oscars) %>%
+  # replace missings for these 4 new variables with zero. Otherwise messes up math manipulations
+  mutate_at(vars(total_oscars_actor1, total_oscars_actor2, total_oscars_actor3, total_oscars_director), 
+            funs(ifelse(is.na(.), 0, .)))
+```
+
+Add together the number of oscars that the actors/actresses in that movie have earned. Only one director so that is all set. 
+ 
+In the report, need to acknowledge that this is not at all a good measure of actor popularity. Many popular actors and actresses (and directors) never win Oscars. But an interesting measure none-the-less. Is the Academy in tune with what regular people want to see and will pay for? 
+```{r movie_total_oscars}
+movie <- movie %>% 
+  mutate(total_oscars_actor = total_oscars_actor1 + total_oscars_actor2 + total_oscars_actor3) 
