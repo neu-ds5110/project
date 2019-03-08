@@ -156,7 +156,7 @@ unique(directors$award)
 Cleaning issue: For the first few years, the dataset lists director name under 'name' for the directing awards, as is logical. However, it switches in 1930 such that 'name' is the film name and 'film' is the director name
 
 ```{r oscar_directorclean}
-directors %>% 
+directors <- directors %>% 
   mutate(name = ifelse(year >= 1930, film, name))
 ```
 
