@@ -73,6 +73,11 @@ movie <- cbind(movie, genre_dummies)
 
 # make a tibble again
 movie <- as.tibble(movie)
+
+# rename Film-Noir and sci-Fi columns. The dashes make some later manipulation hard
+movie <- movie %>%
+  rename(FilmNoir = 'Film-Noir', SciFi = 'Sci-Fi',
+         GameShow = 'Game-Show', RealityTV = 'Reality-TV')
 ```
 
 Exclude observations with missing revenue as this is our dependent variable.
@@ -251,3 +256,37 @@ In the report, need to acknowledge that this is not at all a good measure of act
 ```{r movie_total_oscars}
 movie <- movie %>% 
   mutate(total_oscars_actor = total_oscars_actor1 + total_oscars_actor2 + total_oscars_actor3) 
+```
+
+
+## Outliers?
+
+Basic distribution graphs for each variable: major outliers?
+```{r graph_dist}
+# numeric: histograms
+num_cols <- movie[unlist(lapply(movie, is.numeric))]
+
+lapply(names(num_cols), function(var) {
+  ggplot(movie, aes_string(x = var)) + geom_histogram()
+})
+
+# character: bar plot
+# specify these manually: dont want actors names, original genre column etc
+lapply(c('language', 'country', 'content_rating'), function(var) {
+  ggplot(movie, aes_string(x = var)) + geom_bar()
+})
+```
+
+Look at outliers based on above visualizations
+```{r outlier_inspect}
+movie %>% filter( duration < 60) %>% select(movie_title, duration, year)
+```
+
+Concerning variables:
+* Duration: over 190 minutes. Under 60 minutes
+* Top few gross (real)
+* Top few budget (real)
+* Are there any film noir? game show? News? Reality? Short? 
+  * Even how many war? western? (at least visible) Is it worth including these very small numbered genres?
+* content_rating: approved? any Ms? Passed? X? NA?
+* non english language films 
