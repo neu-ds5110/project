@@ -12,12 +12,14 @@ library(tidyverse)
 library(stringr)
 library(lubridate)
 library(qdapTools)
-#library(VIM)
-#library(corrplot)
-
+library(VIM)
+library(corrplot)
+library(modelr)
 ```
 
-__Discovery__: The deflator data in the World Bank dataset is in local currency. The budget and revenue data in the movie dataset is also in local currency. Thus I needed to introduce an exchange rate dataset so that everything is in real US dollars.
+__Discovery__: The budget and revenue data are not in consistently US or local currency and there is no way to tell. Thus instead of the original plan to use an exchange rate and local deflator to get real US dollars, we are only using US films.
+
+__Data Quality Note__: If IMDB lists multiple values for a variable, this dataset only gives the first or last listed. For example, duration often has multiple versions like director's cut - IMDB gives the last listed. Language also often has multiple - IMDB gives the first language. Same problem for country. 
 
 ## Download Data
 
@@ -27,11 +29,9 @@ Keep different file paths for different people
 #movie <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/movie_metadata.csv")
 #oscar <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/academy_awards.csv")
 #deflator <- read_csv("D:/academic/DS 5110 Introduction to Data Management and Processing/project/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736/API_NY.GDP.DEFL.KD.ZG_DS2_en_csv_v2_10473736.csv", skip = 4)
-
 # Katrina's File Paths
 movie <- read_csv("~/DS5110/data/movie_metadata.csv")
 oscar <- read_csv("~/DS5110/data/academy_awards.csv")
-  # make sure to filter by winners (Winner == 1) and by Actor/Actress and Director
 deflator <- read_csv("~/DS5110/data/GDPDEF.csv")
 ```
 
@@ -43,7 +43,6 @@ Drop some variables we are not using. Rename some variables
 movie <- movie %>% select(-c(color, contains('facebook'), starts_with('num_voted'), 
                              contains('link'), aspect_ratio, facenumber_in_poster,
                              plot_keywords))
-
 # rename year variable so matches with keys in other datasets
 # also rename country to country_name. 
   # When merge with othere datasets later, need to differentiate between country abbreviations and full names
@@ -62,25 +61,7 @@ sum(duplicated(movie)) # 120
 movie <- unique(movie)
 ```
 
-Tidy genre column. Create one column per genre such that each is a dummy variable. One movie can be multiple genres.
-This is tidy data, but for visualizations we will likely have to gather the various genre columns and make the data untidy to use genre as an aesthetic.
-```{r movie_genre_tidy}
-# use mtabulate from qdapTools package to create dummies for each genre 
-genre_dummies <- mtabulate(strsplit(movie$genres, '\\|'))
-
-# cbind with original data
-movie <- cbind(movie, genre_dummies)
-
-# make a tibble again
-movie <- as.tibble(movie)
-
-# rename Film-Noir and sci-Fi columns. The dashes make some later manipulation hard
-movie <- movie %>%
-  rename(FilmNoir = 'Film-Noir', SciFi = 'Sci-Fi',
-         GameShow = 'Game-Show', RealityTV = 'Reality-TV')
-```
-
-Exclude observations with missing revenue as this is our dependent variable.
+Exclude observations with missing revenue as this is our dependent variable. Keep other missings for now - if variables are included in a model, then any missing rows will be dropped. But don't want to drop now in case those rows have useful information about other variables. 
 ```{r movie_grossna_drop}
 movie <- filter(movie, !is.na(gross))
 ```
@@ -89,6 +70,40 @@ Exclude non-US movies. Tried to include these and apply a country-specific defla
 Thus, we are excluding non-US movies to avoid misleading relationships between variables. 
 ```{r movie_nonus}
 movie <- movie %>% filter(country == "USA")
+```
+
+Tidy genre column. Create one column per genre such that each is a dummy variable. One movie can be multiple genres.
+This is tidy data, but for visualizations we will likely have to gather the various genre columns and make the data untidy to use genre as an aesthetic.
+```{r movie_genre_tidy}
+# use mtabulate from qdapTools package to create dummies for each genre 
+genre_dummies <- mtabulate(strsplit(movie$genres, '\\|'))
+# cbind with original data
+movie <- cbind(movie, genre_dummies)
+# make a tibble again
+movie <- as.tibble(movie)
+# rename Film-Noir and sci-Fi columns. The dashes make some later manipulation hard
+movie <- movie %>%
+  rename(FilmNoir = 'Film-Noir', SciFi = 'Sci-Fi')
+```
+
+Recode some movie content ratings.  
+    
+X replaced by NC-17 in 1990, M replaced by PG.  
+Source: https://www.cnn.com/2014/08/06/showbiz/sixties-movie-ratings/index.html  
+  
+Not rated and Unrated are effectively the same as missing
+
+Approved and Passed: Only found definition for Approved, but Passed around the same time period, and thus assuming the same thing. 13 movies, all pre 1965. Replacing as missing
+"Approved - Pre-1968 titles only (from the MPAA site) Under the Hays Code, films were simply approved or disapproved based on whether they were deemed 'moral' or 'immoral'.")"
+Source: https://help.imdb.com/article/contribution/titles/certificates/GU757M8ZJ9ZPXB39?ref_=helpart_nav_27#  
+```{r content_recode}
+movie <- movie %>%
+  mutate(content_rating = ifelse(content_rating == "M", "PG", content_rating),
+         content_rating = ifelse(content_rating == "X", "NC-17", content_rating),
+         content_rating = ifelse(content_rating == 'Not Rated' | content_rating == 'Unrated' |
+                                   content_rating == 'Approved' | content_rating == 'Passed',
+                                NA, content_rating)) 
+      
 ```
 
 ## Deflator Data Cleaning
@@ -146,13 +161,11 @@ actors <- oscar %>%
   filter(winner == 1) %>%
   # acting and directing awards only 
   filter(str_detect(award, 'Actor') | str_detect(award, 'Actress'))
-
 directors <- oscar %>% 
   # winners only
   filter(winner == 1) %>%
   # acting and directing awards only 
   filter(str_detect(award, 'Directing'))
-
 # check these are the awards we want
 unique(actors$award)
 unique(directors$award)
@@ -167,7 +180,6 @@ directors <- directors %>%
 
 Expand the actor and director datasets so have full time series for each Actor. Mark when in that time series they earned each Oscar. Then can cumulatively sum so know number of Oscars at each year. 
 ```{r oscar_expand}
-
 # actors
 actors <- actors %>% 
   # drop unnecessary columns
@@ -178,7 +190,6 @@ actors <- actors %>%
   complete(year, name) %>%
   # fill in oscar dummy with zero when it is not 1 
   mutate(oscar = ifelse(is.na(oscar), 0, oscar))
-
 # directors
 directors <- directors %>% 
   # drop unnecessary columns
@@ -197,7 +208,6 @@ actors <- actors %>%
   group_by(name) %>% 
   mutate(total_oscars = cumsum(oscar)) %>%
   select(-oscar)
-
 directors <- directors %>%
   group_by(name) %>% 
   mutate(total_oscars = cumsum(oscar)) %>%
@@ -213,7 +223,6 @@ unique(nonmatch$year)
   # years before 1947, which is when the deflator data starts. 
 nonmatch %>% count()
   # 13 observations. OK to drop. 
-
 # merge using an inner join. Want to drop any observations in movie that do not have a year in deflator (as above, 13 observations)
 movie <- movie %>% inner_join(deflator, by = 'year')
 ```
@@ -262,14 +271,12 @@ movie <- movie %>%
 ## Outliers?
 
 Basic distribution graphs for each variable: major outliers?
-```{r graph_dist}
+```{r graph_dist, figures = 'hide'}
 # numeric: histograms
 num_cols <- movie[unlist(lapply(movie, is.numeric))]
-
 lapply(names(num_cols), function(var) {
   ggplot(movie, aes_string(x = var)) + geom_histogram()
 })
-
 # character: bar plot
 # specify these manually: dont want actors names, original genre column etc
 lapply(c('language', 'country', 'content_rating'), function(var) {
@@ -278,31 +285,54 @@ lapply(c('language', 'country', 'content_rating'), function(var) {
 ```
 
 Look at outliers based on above visualizations
-```{r outlier_inspect}
+```{r outlier_inspect, results = 'hide'}
+# duraton outliers
 movie %>% filter(duration > 200 | duration < 60) %>% select(movie_title, duration, year)
 # duration: pulled extended cut, director's cut etc from IMDB if available. (usually last run time listed if multiple are listed). Thus not a reliable variable.
 # Example: Heaven's Gate original rough cut was 325 minutes/over 5 hours. However, final cut was around 3 hours. 
 # could trim the outliers, but even for non-outlier movies, I found several examples where the official run time did not match the data given in the datset. Even occassionally found a number not even listed on imbd site (spider man 3)
-
+# revenue and budget outliers
 movie %>% arrange(real_gross) %>% select(movie_title, real_gross, year) %>% head()
 movie %>% arrange(desc(real_gross)) %>% select(movie_title, real_gross, gross, budget, year) %>% head()
 # gross is generally looking at gross USA not worldwide gross 
-# the outliers for gross appear to be real 
-
-
+# the outliers for gross appear to be legit
 movie %>% arrange(real_budget) %>% select(movie_title, real_budget, year, gross) %>% head()
 movie %>% arrange(desc(real_budget)) %>% select(movie_title, real_budget, budget, gross, year) %>% head()
-# outliers appear to be real 
-
+# outliers appear to be legit
+# genres with very few films 
 movie %>% filter(FilmNoir == 1) # 1 
 movie %>% filter(News == 1) # 1
+movie %>% filter(Short == 1) # 1 
+# drop these three genres. All 3 of these movies also have other genres indicated
+movie %>% filter(Western == 1) # 52
+movie %>% filter(War == 1) # 88
+# these have enough that they are ok. 
 ```
 
-Concerning variables:
-* Duration: over 190 minutes. Under 60 minutes
-* Top few gross (real)
-* Top few budget (real)
-* Are there any film noir? game show? News? Reality? Short? 
-  * Even how many war? western? (at least visible) Is it worth including these very small numbered genres?
-* content_rating: approved? any Ms? Passed? X? NA?
-* non english language films 
+Drop some variables based on the above: genres with only one movie (FilmNoir, News, Short) - not helpful for analysis since only one data point. Also dropping duration variable because of the data quality issues that are not fixable and would lead to misleading reuslts. 
+```{r variable_messy_drop}
+movie <- movie %>% select(-c(FilmNoir, News, Short, duration))
+```
+
+## Missing Variable Visualization
+
+After all of this cleaning, look at a visualization of the missing values for each variable
+__I don't have all of the data on my work computer, so this has not been tested. Will run on home later__
+```{r missing_graph}
+missing_values <- aggr(movie, sortVars = T, prop = T, sortCombs = T, cex.lab = 1.5, cex.axis = .6, cex.numbers = 5, combined = F, gap = -.2)
+```
+
+## Partition data
+Choosing 60% train because data not that big to begin with so want to make sure valid and test are big enough
+```{r partition}
+set.seed(5)
+movie_sets <- resample_partition(movie, c(train = .6, valid = .2, test = .2))
+train <- as_tibble(movie_sets$train) # 1885
+valid <- as_tibble(movie_sets$valid) # 629
+test <- as_tibble(movie_sets$test) # 629
+```
+
+## Save data 
+```{r save}
+save(train, valid, test, file = '~/DS5110/data/proj_cleaned_dta.RData')
+```
