@@ -5,12 +5,17 @@ date: "March 4, 2019"
 output: html_document
 ---
 
+```{r}
+rm(list = ls())
+```
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(ggplot2)
 library(tidyverse)
 library(stringr)
 library(lubridate)
+library(forcats)
 library(qdapTools)
 library(VIM)
 library(corrplot)
@@ -267,6 +272,24 @@ movie <- movie %>%
   mutate(total_oscars_actor = total_oscars_actor1 + total_oscars_actor2 + total_oscars_actor3) 
 ```
 
+There are 2 movies with cumulative # actor Oscars == 4. 6 movies with 3.   
+There are 25 movies with cumulative # actor Oscars == 2.   
+  
+Make factors and recode categories: actors: 0, 1, 2 or more. Directors: 0, 1 or more.  
+These numbers make sense too. If two major actors with Oscars. Usually only have one director, so having one Oscar holding director is good.
+
+```{r movie_oscars_factors}
+movie <- movie %>%
+  mutate_at(vars(total_oscars_actor, total_oscars_director), funs(as.factor(.))) %>% 
+  # recode
+  mutate(total_oscars_actor = fct_collapse(total_oscars_actor, 
+                                           '0' = '0', '1' = '1',
+                                           '2 or more' = c('2', '3', '4')),
+         total_oscars_director = fct_collapse(total_oscars_director,
+                                              '0' = '0',
+                                              '1 or more' = c('1', '2')))
+
+```
 
 ## Outliers?
 
@@ -291,6 +314,7 @@ movie %>% filter(duration > 200 | duration < 60) %>% select(movie_title, duratio
 # duration: pulled extended cut, director's cut etc from IMDB if available. (usually last run time listed if multiple are listed). Thus not a reliable variable.
 # Example: Heaven's Gate original rough cut was 325 minutes/over 5 hours. However, final cut was around 3 hours. 
 # could trim the outliers, but even for non-outlier movies, I found several examples where the official run time did not match the data given in the datset. Even occassionally found a number not even listed on imbd site (spider man 3)
+
 # revenue and budget outliers
 movie %>% arrange(real_gross) %>% select(movie_title, real_gross, year) %>% head()
 movie %>% arrange(desc(real_gross)) %>% select(movie_title, real_gross, gross, budget, year) %>% head()
@@ -299,6 +323,7 @@ movie %>% arrange(desc(real_gross)) %>% select(movie_title, real_gross, gross, b
 movie %>% arrange(real_budget) %>% select(movie_title, real_budget, year, gross) %>% head()
 movie %>% arrange(desc(real_budget)) %>% select(movie_title, real_budget, budget, gross, year) %>% head()
 # outliers appear to be legit
+
 # genres with very few films 
 movie %>% filter(FilmNoir == 1) # 1 
 movie %>% filter(News == 1) # 1
