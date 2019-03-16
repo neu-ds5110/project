@@ -1,7 +1,7 @@
 ---
 title: "EDA"
 author: "Katrina Truebebach"
-date: "March 12, 2019"
+date: "March 16, 2019"
 output: html_document
 ---
 
@@ -25,30 +25,54 @@ library(tis)
 load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 ```
 
-Graph number of Oscars for actors and directors against  
+## Oscars 
+
+Graph number of Oscars for actors and directors against real revenue. Boxplot and bar plot (average revenue)
 _Both are linear but very weak. Unclear if should include in model_
 
 
 ```{r graph_oscarnum}
+# Versions of data with average revenue by number of oscars 
+train_oscar_actor <- train %>%
+  group_by(total_oscars_actor) %>% 
+  summarize(avg_real_gross = mean(real_gross))
+train_oscar_director <- train %>%
+  group_by(total_oscars_director) %>% 
+  summarize(avg_real_gross = mean(real_gross))
 
-# Function to graph number of Oscars held by actors in movie vs. real revenue 
-oscar_num <- function(df, var, title_str, x_str) {
+# Functions to graph number of Oscars held by actors in movie vs. real revenue 
+# boxplot
+oscar_box <- function(df, var, title_str, x_str) {
   ggplot(df, aes_string(var, "real_gross")) + 
     geom_boxplot() + 
     labs(title = title_str, x = x_str, y = 'Real Gross Revenue ($)')
 }
 
+# bar graph 
+oscar_bar <- function(df, var, title_str, x_str) {
+  ggplot(df, aes_string(var, "avg_real_gross")) + 
+    geom_col() + 
+    labs(title = title_str, x = x_str, y = 'Average Real Gross Revenue ($)')
+}
+
 # actors
-oscar_num(train, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 
+oscar_box(train, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 
           'Total # Oscars Held by Actors in Movie')
+oscar_bar(train_oscar_actor, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 
+          'Total # Oscars Held by Actors in Movie')
+
 # directors
-oscar_num(train, 'total_oscars_director', 'Total # Oscars of Actors vs Real Gross Revenue', 
-          'Total # Oscars Held by Actors in Movie')
+oscar_box(train, 'total_oscars_director', 'Total # Oscars of Directors vs Real Gross Revenue', 
+          'Total # Oscars Held by Directors in Movie')
+oscar_bar(train_oscar_director, 'total_oscars_director', 'Total # Oscars of Directors vs Real Gross     Revenue', 'Total # Oscars Held by Directors in Movie')
+
 ```
+
+## Year 
 
 Average real revenue vs year  
 Adeed APPROXIMATE recession shading. Annual data, so hard to do.  
-Real revenue during recessions (have seen this before with Great Depression - numerous articles we can reference)  
+Real revenue increase during recessions (have seen this before with Great Depression - numerous articles we can reference)  
 Regardless, clear that year could have an effect
 
 ```{r year}
@@ -61,8 +85,6 @@ train_sum <- train %>%
 # this causes large spikes because one high earning or low earning movie influences the average heavily
 # Starting at 1995, where have at least 30 (or very close) movies per year. Now can see movements over time 
 
-
-
 ggplot(data = train_sum %>% filter(year >= 1995)) + 
   geom_rect(aes(xmin = 2008, xmax = 2010, 
                 ymin = min(real_gross_avg, na.rm = T), 
@@ -73,6 +95,40 @@ ggplot(data = train_sum %>% filter(year >= 1995)) +
   geom_line(aes(x = year, y = real_gross_avg)) +
   labs(title = 'Average Real Gross Revenue Over Time', x = 'Year', y = 'Real Gross Revenue ($)') 
 
+```
 
+## Content Rating 
+
+Bar graph of average real revenue and boxplot   
+_Linear relationship. Good candidate to include in the model_
+
+```{r content_rating}
+
+# data manipulation. Factor. 
+train_content <- train %>%
+  # filter out missing
+  filter(!is.na(content_rating)) %>%
+  # Make content rating a factor so can order in graphics
+  mutate(content_rating = as.factor(content_rating), 
+         content_rating = reorder(content_rating, real_gross))
+
+# boxplot 
+train_content  %>% 
+  ggplot() + 
+  geom_boxplot(aes(x = content_rating, y = real_gross, fill = content_rating)) +
+  labs(x = 'Content Rating', y = 'Real Gross Revenue ($)', 
+       title = 'Content Rating vs Real Gross Revenue') + 
+  theme(legend.position = 'none')
+
+# bar graph
+train_content  %>% 
+  # average revenue by content rating
+  group_by(content_rating) %>%
+  summarize(avg_real_gross = mean(real_gross)) %>%
+  ggplot() + 
+  geom_col(aes(x = content_rating, y = avg_real_gross, fill = content_rating)) +
+  labs(x = 'Content Rating', y = 'Average Real Gross Revenue ($)', 
+       title = 'Content Rating vs Average Real Gross Revenue') + 
+  theme(legend.position = 'none')
 
 ```
