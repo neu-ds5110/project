@@ -1,0 +1,86 @@
+---
+title: "EDA_Qiang"
+author: "Qiang Fang"
+date: "March 17, 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(VIM)
+library(corrplot)
+
+```
+
+
+```{r}
+load("D:/academic/DS 5110 Introduction to Data Management and Processing/project/katrina/proj_cleaned_dta.RData")
+
+```
+```{r}
+library(ggcorrplot)
+
+train_num<- select(train,num_critic_for_reviews,num_user_for_reviews,budget,imdb_score,
+       Action,Adventure,Animation,Biography,Comedy,Crime,Documentary,Drama,Family,Fantasy,History,Horror,Music,Musical,Mystery,Romance,SciFi,Sport,Thriller,War,Western,gdpd,real_budget,real_gross,total_oscars_actor1,total_oscars_actor2,total_oscars_actor3)
+
+corr <- cor(train_num)
+ggcorrplot(corr)
+
+ 
+```
+
+
+```{r}
+
+ggplot(train, aes(x=num_critic_for_reviews,y=real_gross)) +
+  geom_point() +
+  geom_smooth()
+```
+
+```{r}
+ggplot(train, aes(x=num_user_for_reviews,y=real_gross)) +
+  geom_point() +
+  geom_smooth()
+
+```
+
+```{r}
+ggplot(train, aes(x=real_budget,y=real_gross)) +
+  geom_point() +
+  geom_smooth()
+
+```
+
+
+```{r}
+ggplot(train, aes(x=imdb_score,y=real_gross)) +
+  geom_point() +
+  geom_jitter() +
+  geom_smooth()
+
+
+```
+
+
+
+
+```{r}
+plotGenre <- function(df){
+    for(i in 16:36){
+       col_name <- colnames(train)[[i]]
+       g <- df %>%
+        group_by_(col_name) %>%
+        summarize(avg_real_gross = mean(real_gross)) %>%
+         ggplot(df,mapping = aes_string(x=col_name,y="avg_real_gross")) + 
+         geom_col()
+       #print(i)
+       print(g)
+      }
+}
+
+plotGenre(train)
+```
+
+
