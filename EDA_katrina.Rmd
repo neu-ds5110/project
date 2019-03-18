@@ -2,7 +2,7 @@
 title: "EDA"
 author: "Katrina Truebebach"
 date: "March 16, 2019"
-output: html_document
+output: pdf_document
 ---
 
 ```{r}
@@ -132,3 +132,45 @@ train_content  %>%
   theme(legend.position = 'none')
 
 ```
+
+
+## Genre 
+Bar graph of genre vs real revenue. Try boxplot and bar graph against average real revenue.  
+_Fairly linear relationship. Good candidate to include in model._
+
+```{r genre}
+# untidy the genre data such that one obseration is spread across many rows. Easier to graph
+genre_cols <- c('Action', 'Adventure', 'Animation', 'Biography', 'Comedy', 'Crime', 'Documentary',
+                'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Musical', 'Mystery',
+                'Romance', 'SciFi', 'Sport', 'Thriller', 'War', 'Western')
+train_genre <- train %>%
+  # gather: one row per genre-movie combo
+  gather(genre_cols, key = genre, value = yes) %>%
+  # only keep when 'yes' is 1 (yes it is of that genre) %>%
+  filter(yes == 1) %>%
+  # make genre a factor and order by real_gross
+  mutate(genre = as.factor(genre), genre = reorder(genre, real_gross)) 
+
+# bar graph 
+train_genre %>% 
+  # average by genre
+  group_by(genre) %>%
+  summarize(avg_real_gross = mean(real_gross)) %>%
+  # graph
+  ggplot() + 
+  geom_col(aes(x = genre, y = avg_real_gross, fill = genre)) + 
+  coord_flip() + 
+  labs(x = 'Genre', y = 'Average Real Gross Revenue ($)',
+       title = 'Genre vs Average Real Gross Revenue') + 
+  theme(legend.position = 'none')
+
+# boxplot
+train_genre %>%
+  ggplot() + 
+  geom_boxplot(aes(x = genre, y = real_gross, fill = genre)) + 
+  coord_flip() + 
+  labs(x = 'Genre', y = 'Real Gross Revenue ($)',
+       title = 'Genre vs Average Real Gross Revenue') + 
+  theme(legend.position = 'none')
+```
+
