@@ -1,0 +1,234 @@
+---
+title: "Modeling_Katrina"
+author: "Katrina Truebebach"
+date: "March 18, 2019"
+output: pdf_document
+---
+
+```{r}
+rm(list = ls())
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(modelr)
+library(tis)
+```
+
+## Load cleaned data
+
+```{r load}
+load(file = '~/DS5110/data/proj_cleaned_dta.RData')
+```
+
+# Fit Model with Genre Variables vs Real Revenue
+
+## Step Wise Selection
+End model includes (in order of steps): 'Adventure', 'Fantasy', 'Action', 'Thriller', 'Documentary', 'Horror', 'Drama', 'Comedy', 'War', 'Musical'  
+  
+This model selection is initially surprising because some of the included variables are not significant and, according to Qiang's graphs in EDA, do not make a real difference to real_gross. Also, some genres that look like they would make a signficant difference are not included.
+  
+Thoughts:  
+  
+* There are a few genres that define almost all of the movies (For example, Adventure, Action, and Drama identify 1341 out of 1885 movies). Thus, the relationship between revenue and some genres can be explained by other generes. For example, 78 out of 99 Animation movies are also Comedy. So Animation's effect on revenue may already by captured by Comedy.
+    * Maybe not the best argument...51 out of 62 War movies are Drama. But both included in the model (although War is close to the cutoff of not being included based on how much it decreases RMSE)
+* On the flip side, Comedy and Thriller are included even though they seem to have a negligable effect on revenue based on the EDA bar graphs. One theory is that neither of these generes correlate well/are explained largely by another genre, thus making the relationship with genre more explanatory, even if the effect on revenue is small and insignificant.  
+  
+Also, the residuals are debatably random vs included and excluded variables in model (not sure if these are not-random enough to matter -- see graphs).  
+More concerning is the fact that the residuals themselves are not Normal. See QQ-Plot
+
+```{r exmaples, eval = F}
+train %>% filter(Animation == 1, Comedy == 1) %>% count() # 78
+train %>% filter(Animation == 1, (Fantasy == 1 | Adventure == 1 | Comedy == 1)) %>% count() # 99
+train %>% filter(Animation == 1) %>% count() # 99
+train %>% count()
+
+train %>% filter(War == 1, Drama == 1) %>% count() # 51
+train %>% filter(War == 1) %>% count() # 62
+
+train %>% filter(Thriller == 1) %>% count() # 508
+train %>% filter(Thriller == 1, Adventure == 1) %>% count()
+train %>% filter(Thriller == 1, Fantasy == 1) %>% count()
+train %>% filter(Thriller == 1, Action == 1) %>% count()
+train %>% filter(Thriller == 1, Documentary == 1) %>% count()
+train %>% filter(Thriller == 1, Horror == 1) %>% count()
+train %>% filter(Thriller == 1, Drama == 1) %>% count()
+train %>% filter(Thriller == 1, Comedy == 1) %>% count()
+train %>% filter(Thriller == 1, War == 1) %>% count()
+train %>% filter(Thriller == 1, Musical == 1) %>% count()
+
+
+train %>% filter(Comedy == 1) %>% count() # 793
+train %>% filter(Comedy == 1, Adventure == 1) %>% count()
+train %>% filter(Comedy == 1, Fantasy == 1) %>% count()
+train %>% filter(Comedy == 1, Action == 1) %>% count()
+train %>% filter(Comedy == 1, Documentary == 1) %>% count()
+train %>% filter(Comedy == 1, Horror == 1) %>% count()
+train %>% filter(Comedy == 1, Drama == 1) %>% count()
+train %>% filter(Comedy == 1, Thriller == 1) %>% count()
+train %>% filter(Comedy == 1, War == 1) %>% count()
+train %>% filter(Comedy == 1, Musical == 1) %>% count()
+
+```
+
+Which genres should we be using?  
+Note: not using the step() function because can't fit and find RMSE on different datasets (train, valid)
+
+
+```{r}
+# version of train set with just genre columns to loop through 
+train_genre <- train %>% select(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
+                Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
+                Romance, SciFi, Sport, Thriller, War, Western)
+
+# function to automate each step of stepwise variable selection
+step_wise_step <- function(genre_lst = NULL, formula = NULL) {
+  # if first step
+  if (length(genre_lst) == 0) {
+    # rmse with each variable against real_gross
+    rmse_genre <- sapply(names(train_genre), function(var) {
+      rmse(lm(as.formula(str_c('real_gross ~', var)), data = train), data = valid)
+    })
+  # if > first step: exclude variables from genre_lst from data and include in model formula
+  } else {
+    rmse_genre <- sapply(names(train_genre %>% select(-genre_lst)), function(var) {
+      rmse(lm(as.formula(str_c('real_gross ~', formula, ' + ', var)), 
+              data = train), data = valid)
+    })
+  }
+  # return the name and value of the genre that resulted in the lowest RMSE 
+  return(rmse_genre[which.min(rmse_genre)])
+}
+
+# loop through each step wise loop
+step_wise_loop <- function() {
+  # list to store min RMSE from each step in 
+  rmse_lst <- c()
+  
+  # first step: no genre_lst or formula (default values NULL)
+  min_genre <- step_wise_step()
+  print(names(min_genre))
+  
+  # add to list of genres, formula, and min RMSE list
+  genre_lst <- names(min_genre)
+  formula <- str_c(names(min_genre))
+  rmse_lst <- c(rmse_lst, min(min_genre))
+  
+  # loop through until have considered every genre variable 
+  for (i in seq(1:(ncol(train_genre)-1))) {
+    print(i)
+    # step
+    min_genre <- step_wise_step(genre_lst = genre_lst, formula = formula)
+    print(min_genre)
+    
+    # add to lists
+    genre_lst <- c(genre_lst, names(min_genre))
+    formula <- str_c(formula, ' + ', names(min_genre))
+    rmse_lst <- c(rmse_lst, min(min_genre))
+  }
+  return(rmse_lst)
+}
+
+# step wise implement
+# return list of all min RMSE from each step -> graph
+rmse_lst <- step_wise_loop()
+```
+
+Graph RMSE vs number of variables: how many to include?  
+Specify 'final' model  
+
+```{r rmse_gr}
+# graph RMSE at each step 
+fit_rmse <- tibble(nvar = 1:length(rmse_lst), 
+                   rmse = rmse_lst)
+ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+ 
+  scale_x_continuous(breaks = seq(1, length(rmse_lst), by = 1))
+# after var 10, decreases too small or increase 
+
+# model based off of step wise 
+# HOWEVER some of these variables are insignificant 
+  # (see pvalues and graphs from Qiang's EDA where barely any difference in revenue from genre)
+mod <- lm(real_gross ~ Adventure + Fantasy + Action + Thriller + 
+            Documentary + Horror + Drama + Comedy + War + Musical, 
+          data = train)
+summary(mod)
+rmse(mod, data = valid)
+
+
+# list of these variables for future use
+genre_xvar <- c('Adventure', 'Fantasy', 'Action', 'Thriller', 
+                'Documentary', 'Horror', 'Drama', 'Comedy', 'War', 'Musical')
+```
+
+Try alternate model with just genres that looked the most significant from eyeballing Qiang's graphs.  
+RMSE is higher
+```{r sig_genre}
+# alternate model just using the genres that looked correct based on eyeballing Qiang's graphs
+mod2 <- lm(real_gross ~ Action + Adventure + Animation + Documentary + Family +
+             Fantasy + SciFi, data = train)
+rmse(mod2, data = valid) # higher rmse
+summary(mod2)
+```
+
+Graph variables in and out of model against residuals    
+There are some relationships (Adventure, Animation etc.) that don't look random. Not sure if big enough deviation to matter however. 
+
+```{r }
+# graph residuals against each variable included in the model
+# most look random except Adventure
+train <- train %>% 
+  add_residuals(mod) %>%
+  mutate_at(vars(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
+                Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
+                Romance, SciFi, Sport, Thriller, War, Western),
+            funs(as.factor(.)))
+
+lapply(genre_xvar, function(var) {
+  train %>% 
+    ggplot() + 
+    geom_boxplot(aes_string(var, y = 'resid'))
+})
+
+# graph residuals against each genre not included in the model 
+# several are questionable if random. Especially Animation.
+lapply(names(train_genre %>% select(-genre_xvar)), function(var) {
+  train %>% 
+    ggplot() + 
+    geom_boxplot(aes_string(var, y = 'resid'))
+})
+```
+
+Plot QQ plot for residuals. NOT normally distributed. Don't know what to do here. 
+
+```{r qq}
+# residuals themselves are NOT normally distributed 
+# qq plot 
+train %>% ggplot() + 
+  geom_qq(aes(sample = resid))
+
+```
+
+
+## Glmnet: sparse 
+Quickly try this new method from class instead of stepwise.  
+However, doesn't eliminate many variables and can't do statistical testing, so not very useful.
+
+```{r sparse}
+library(glmnet)
+ 
+# matrix of x and y variables
+x <- as.matrix(train_genre)
+y <- as.matrix(train$real_gross)
+
+# glmnet process form class 
+mod <- glmnet(x, y, family = 'gaussian')
+plot(mod, xvar = 'lambda', label = TRUE)
+mod2 <- cv.glmnet(x, y)
+plot(mod2)
+coef(mod2, s = 'lambda.min') # use min lambda
+coef(mod2, s = 'lambda.1se') # use most sparse
+```
