@@ -28,50 +28,25 @@ load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 # Fit Model with Genre Variables vs Real Revenue
 
 ## Step Wise Selection
-End model includes (in order of steps): 'Adventure', 'Fantasy', 'Action', 'Thriller', 'Documentary', 'Horror', 'Drama', 'Comedy', 'War', 'Musical'  
+End model includes (in order of steps): 'Adventure', 'Action', 'Family', 'Mystery', 'Documentary', 'Drama', 'History', 'Romance'  
   
-This model selection is initially surprising because some of the included variables are not significant and, according to Qiang's graphs in EDA, do not make a real difference to real_gross. Also, some genres that look like they would make a signficant difference are not included.
+This model selection by and large makes sense. All included variables are significant at some level.  
+However, according to Qiang's graphs in EDA, some of the included genres do not make a real difference to real_gross. Especially History. Also, some genres that look like they would make a signficant difference are not included. For example, Animation.
   
 Thoughts:  
   
-* There are a few genres that define almost all of the movies (For example, Adventure, Action, and Drama identify 1341 out of 1885 movies). Thus, the relationship between revenue and some genres can be explained by other generes. For example, 78 out of 99 Animation movies are also Comedy. So Animation's effect on revenue may already by captured by Comedy.
-    * Maybe not the best argument...51 out of 62 War movies are Drama. But both included in the model (although War is close to the cutoff of not being included based on how much it decreases RMSE)
-* On the flip side, Comedy and Thriller are included even though they seem to have a negligable effect on revenue based on the EDA bar graphs. One theory is that neither of these generes correlate well/are explained largely by another genre, thus making the relationship with genre more explanatory, even if the effect on revenue is small and insignificant.  
-  
+* There are a few genres that define almost all of the movies (For example, almost 80% of the movies are either Adventure, Action, Romance, or Drama). Thus, the relationship between revenue and some genres can be explained by other generes. For example, 93 out of 99 Animation movies are also Family. So Animation's effect on revenue may already by captured by Family, which is included in the model.
+* On the flip side, History is included even though it seems to have a negligable effect on revenue based on the EDA bar graphs. I don't have a great explanation for this other than it was close to the cutoff RMSE for being included. 53 out of 55 History movies are also Drama. So unclear why included.  
+   
 Also, the residuals are debatably random vs included and excluded variables in model (not sure if these are not-random enough to matter -- see graphs).  
-More concerning is the fact that the residuals themselves are not Normal. See QQ-Plot
+More concerning is the fact that the residuals themselves are not Normal. See QQ-Plot (close-ish...)
 
 ```{r exmaples, eval = F}
-train %>% filter(Animation == 1, Comedy == 1) %>% count() # 78
-train %>% filter(Animation == 1, (Fantasy == 1 | Adventure == 1 | Comedy == 1)) %>% count() # 99
+train %>% filter(Animation == 1, Family == 1) %>% count() # 93
 train %>% filter(Animation == 1) %>% count() # 99
-train %>% count()
 
-train %>% filter(War == 1, Drama == 1) %>% count() # 51
-train %>% filter(War == 1) %>% count() # 62
-
-train %>% filter(Thriller == 1) %>% count() # 508
-train %>% filter(Thriller == 1, Adventure == 1) %>% count()
-train %>% filter(Thriller == 1, Fantasy == 1) %>% count()
-train %>% filter(Thriller == 1, Action == 1) %>% count()
-train %>% filter(Thriller == 1, Documentary == 1) %>% count()
-train %>% filter(Thriller == 1, Horror == 1) %>% count()
-train %>% filter(Thriller == 1, Drama == 1) %>% count()
-train %>% filter(Thriller == 1, Comedy == 1) %>% count()
-train %>% filter(Thriller == 1, War == 1) %>% count()
-train %>% filter(Thriller == 1, Musical == 1) %>% count()
-
-
-train %>% filter(Comedy == 1) %>% count() # 793
-train %>% filter(Comedy == 1, Adventure == 1) %>% count()
-train %>% filter(Comedy == 1, Fantasy == 1) %>% count()
-train %>% filter(Comedy == 1, Action == 1) %>% count()
-train %>% filter(Comedy == 1, Documentary == 1) %>% count()
-train %>% filter(Comedy == 1, Horror == 1) %>% count()
-train %>% filter(Comedy == 1, Drama == 1) %>% count()
-train %>% filter(Comedy == 1, Thriller == 1) %>% count()
-train %>% filter(Comedy == 1, War == 1) %>% count()
-train %>% filter(Comedy == 1, Musical == 1) %>% count()
+train %>% filter(History == 1) %>% count() # 55
+train %>% filter(History == 1, Drama == 1) %>% count() # 53
 
 ```
 
@@ -85,18 +60,21 @@ train_genre <- train %>% select(Action, Adventure, Animation, Biography, Comedy,
                 Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
                 Romance, SciFi, Sport, Thriller, War, Western)
 
+train <- train %>% mutate(real_gross_log = log(real_gross))
+valid <- valid %>% mutate(real_gross_log = log(real_gross))
+
 # function to automate each step of stepwise variable selection
 step_wise_step <- function(genre_lst = NULL, formula = NULL) {
   # if first step
   if (length(genre_lst) == 0) {
     # rmse with each variable against real_gross
     rmse_genre <- sapply(names(train_genre), function(var) {
-      rmse(lm(as.formula(str_c('real_gross ~', var)), data = train), data = valid)
+      rmse(lm(as.formula(str_c('real_gross_log ~', var)), data = train), data = valid)
     })
   # if > first step: exclude variables from genre_lst from data and include in model formula
   } else {
     rmse_genre <- sapply(names(train_genre %>% select(-genre_lst)), function(var) {
-      rmse(lm(as.formula(str_c('real_gross ~', formula, ' + ', var)), 
+      rmse(lm(as.formula(str_c('real_gross_log ~', formula, ' + ', var)), 
               data = train), data = valid)
     })
   }
@@ -152,30 +130,19 @@ ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+
 # model based off of step wise 
 # HOWEVER some of these variables are insignificant 
   # (see pvalues and graphs from Qiang's EDA where barely any difference in revenue from genre)
-mod <- lm(real_gross ~ Adventure + Fantasy + Action + Thriller + 
-            Documentary + Horror + Drama + Comedy + War + Musical, 
+mod <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
+            Documentary + Drama + History + Romance, 
           data = train)
+
 summary(mod)
 rmse(mod, data = valid)
 
-
 # list of these variables for future use
-genre_xvar <- c('Adventure', 'Fantasy', 'Action', 'Thriller', 
-                'Documentary', 'Horror', 'Drama', 'Comedy', 'War', 'Musical')
+genre_xvar <- c('Adventure', 'Action', 'Family', 'Mystery',
+                'Documentary', 'Drama', 'History', 'Romance')
 ```
 
-Try alternate model with just genres that looked the most significant from eyeballing Qiang's graphs.  
-RMSE is higher
-```{r sig_genre}
-# alternate model just using the genres that looked correct based on eyeballing Qiang's graphs
-mod2 <- lm(real_gross ~ Action + Adventure + Animation + Documentary + Family +
-             Fantasy + SciFi, data = train)
-rmse(mod2, data = valid) # higher rmse
-summary(mod2)
-```
-
-Graph variables in and out of model against residuals    
-There are some relationships (Adventure, Animation etc.) that don't look random. Not sure if big enough deviation to matter however. 
+Graph variables in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.
 
 ```{r }
 # graph residuals against each variable included in the model
@@ -202,7 +169,7 @@ lapply(names(train_genre %>% select(-genre_xvar)), function(var) {
 })
 ```
 
-Plot QQ plot for residuals. NOT normally distributed. Don't know what to do here. 
+Plot QQ plot for residuals. Not normally distributed, but close-ish.
 
 ```{r qq}
 # residuals themselves are NOT normally distributed 
@@ -214,15 +181,15 @@ train %>% ggplot() +
 
 
 ## Glmnet: sparse 
-Quickly try this new method from class instead of stepwise.  
-However, doesn't eliminate many variables and can't do statistical testing, so not very useful.
+Quickly try this new method from class instead of stepwise. The sparse version does give us a lot of the same variables as stepwise. Good sign!  
+Can't do statistical tests, so not useful for analysis, but can use to aid justification.
 
 ```{r sparse}
 library(glmnet)
  
 # matrix of x and y variables
 x <- as.matrix(train_genre)
-y <- as.matrix(train$real_gross)
+y <- as.matrix(train$real_gross_log)
 
 # glmnet process form class 
 mod <- glmnet(x, y, family = 'gaussian')

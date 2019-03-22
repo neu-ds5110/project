@@ -2,7 +2,7 @@
 title: "Project Data Cleaning"
 author: "Katrina Truebebach"
 date: "March 4, 2019"
-output: html_document
+output: pdf_document
 ---
 
 ```{r}
@@ -45,7 +45,7 @@ deflator <- read_csv("~/DS5110/data/GDPDEF.csv")
 Drop some variables we are not using. Rename some variables
 ```{r movie_drop}
 # drop variables we aren't using
-movie <- movie %>% select(-c(color, contains('facebook'), starts_with('num_voted'), 
+movie <- movie %>% select(-c(color, starts_with('num_voted'), 
                              contains('link'), aspect_ratio, facenumber_in_poster,
                              plot_keywords))
 # rename year variable so matches with keys in other datasets
@@ -60,10 +60,10 @@ movie <- movie %>%
   mutate_if(is.character, str_trim)
 ```
 
-Drop rows that are entirely duplicated 
+Drop rows that are duplicated: just base on title and year. Other variables have small errors (small difference in number of facebook likes, difference in who is actor3 etc.) but those movies are still duplicates
 ```{r movie_duplicate_drop}
-sum(duplicated(movie)) # 120
-movie <- unique(movie)
+sum(duplicated(movie %>% select(movie_title, year))) # 124
+movie <- movie[!duplicated(movie %>% select(movie_title, year)),]
 ```
 
 Exclude observations with missing revenue as this is our dependent variable. Keep other missings for now - if variables are included in a model, then any missing rows will be dropped. But don't want to drop now in case those rows have useful information about other variables. 
@@ -314,6 +314,10 @@ movie %>% filter(duration > 200 | duration < 60) %>% select(movie_title, duratio
 # duration: pulled extended cut, director's cut etc from IMDB if available. (usually last run time listed if multiple are listed). Thus not a reliable variable.
 # Example: Heaven's Gate original rough cut was 325 minutes/over 5 hours. However, final cut was around 3 hours. 
 # could trim the outliers, but even for non-outlier movies, I found several examples where the official run time did not match the data given in the datset. Even occassionally found a number not even listed on imbd site (spider man 3)
+
+# facebook likes. Big movies and directors with lots of likes. Seems correct
+movie %>% filter(director_facebook_likes > 10000) %>% select(director_name)
+movie %>% filter(cast_total_facebook_likes > 100000) %>% select(movie_title)
 
 # revenue and budget outliers
 movie %>% arrange(real_gross) %>% select(movie_title, real_gross, year) %>% head()
