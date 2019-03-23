@@ -45,7 +45,7 @@ More concerning is the fact that the residuals themselves are not Normal. See QQ
 
 ```{r exmaples, eval = F}
 train %>% filter(Animation == 1, Family == 1) %>% count() # 93
-train %>% filter(Animation == 1) %>% count() # 99
+train %>% filter(Animation == 1) %>% count() # 101
 
 train %>% filter(History == 1) %>% count() # 55
 train %>% filter(History == 1, Drama == 1) %>% count() # 53
@@ -56,9 +56,9 @@ Which genres should we be using?
 Note: not using the step() function because can't fit and find RMSE on different datasets (train, valid)
 
 
-```{r}
+```{r step_wise_fn}
 # version of train set with just genre columns to loop through 
-train_genre <- train %>% select(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
+train_genre_only <- train %>% select(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
                 Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
                 Romance, SciFi, Sport, Thriller, War, Western)
 
@@ -67,59 +67,74 @@ train <- train %>% mutate(real_gross_log = log(real_gross))
 valid <- valid %>% mutate(real_gross_log = log(real_gross))
 
 # function to automate each step of stepwise variable selection
-step_wise_step <- function(genre_lst = NULL, formula = NULL) {
+# df_vars is the dataset with only the relevant variables 
+# var_lst is the list of variables that are in the base model
+# formula is the formula with those variables besides the y variable
+step_wise_step <- function(df_vars, var_lst = NULL, formula = NULL) {
   # if first step
-  if (length(genre_lst) == 0) {
+  if (length(var_lst) == 0) {
     # rmse with each variable against real_gross
-    rmse_genre <- sapply(names(train_genre), function(var) {
+    rmse_vars <- sapply(names(df_vars), function(var) {
+      # rmse of model
       rmse(lm(as.formula(str_c('real_gross_log ~', var)), data = train), data = valid)
     })
-  # if > first step: exclude variables from genre_lst from data and include in model formula
+  # if > first step: exclude variables from var_lst from data and include in model formula
   } else {
-    rmse_genre <- sapply(names(train_genre %>% select(-genre_lst)), function(var) {
+    rmse_vars <- sapply(names(df_vars %>% select(-var_lst)), function(var) {
+      # rmse of model
       rmse(lm(as.formula(str_c('real_gross_log ~', formula, ' + ', var)), 
               data = train), data = valid)
-    })
+      })
   }
   # return the name and value of the genre that resulted in the lowest RMSE 
-  return(rmse_genre[which.min(rmse_genre)])
+  return(rmse_vars[which.min(rmse_vars)])
 }
 
-# loop through each step wise loop
-step_wise_loop <- function() {
+# function to loop through each step wise loop
+# adding optional starting vars and formula in case want to build off of an existing formula 
+step_wise_loop <- function(df_vars, starting_vars = NULL, starting_formula = NULL) {
   # list to store min RMSE from each step in 
   rmse_lst <- c()
   
   # first step: no genre_lst or formula (default values NULL)
-  min_genre <- step_wise_step()
-  print(names(min_genre))
-  
+  min_rmse_var <- step_wise_step(df = df_vars, var_lst = starting_vars, formula = starting_formula)
+  print(min_rmse_var)
+
   # add to list of genres, formula, and min RMSE list
-  genre_lst <- names(min_genre)
-  formula <- str_c(names(min_genre))
-  rmse_lst <- c(rmse_lst, min(min_genre))
+  var_lst <- c(starting_vars, names(min_rmse_var))
+  formula <- str_c(starting_formula, '+', names(min_rmse_var))
+  rmse_lst <- c(rmse_lst, min(min_rmse_var))
   
-  # loop through until have considered every genre variable 
-  for (i in seq(1:(ncol(train_genre)-1))) {
+  # if have starting variables, take those out of the number we are iterating through
+  if (!is.null(starting_vars)) {
+    df_vars_seq <- df_vars %>% select(-starting_vars)
+  } else {
+    df_vars_seq <- df_vars
+  }
+  # loop through until have considered every variable 
+  for (i in seq(1:(ncol(df_vars_seq)-1))) {
     print(i)
     # step
-    min_genre <- step_wise_step(genre_lst = genre_lst, formula = formula)
-    print(min_genre)
+    min_rmse_var <- step_wise_step(df = df_vars, var_lst = var_lst, formula = formula)
+    print(min_rmse_var)
     
     # add to lists
-    genre_lst <- c(genre_lst, names(min_genre))
-    formula <- str_c(formula, ' + ', names(min_genre))
-    rmse_lst <- c(rmse_lst, min(min_genre))
+    var_lst <- c(var_lst, names(min_rmse_var))
+    formula <- str_c(formula, ' + ', names(min_rmse_var))
+    rmse_lst <- c(rmse_lst, min(min_rmse_var))
   }
   return(rmse_lst)
 }
 
-# step wise implement
-# return list of all min RMSE from each step -> graph
-rmse_lst <- step_wise_loop()
 ```
 
-Graph RMSE vs number of variables: how many to include?  
+```{r step_wise}
+# step wise implement
+# return list of all min RMSE from each step -> graph
+rmse_lst <- step_wise_loop(df = train_genre_only)
+```
+
+### Graph RMSE vs number of variables: how many to include?  
 Specify 'final' model  
 
 ```{r rmse_gr}
@@ -133,55 +148,68 @@ ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+
 # model based off of step wise 
 # HOWEVER some of these variables are insignificant 
   # (see pvalues and graphs from Qiang's EDA where barely any difference in revenue from genre)
-mod <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
+mod_genre <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
             Documentary + Drama + History + Romance, 
           data = train)
 
-summary(mod)
-rmse(mod, data = valid)
+summary(mod_genre)
+rmse(mod_genre, data = valid)
 
 # list of these variables for future use
 genre_xvar <- c('Adventure', 'Action', 'Family', 'Mystery',
                 'Documentary', 'Drama', 'History', 'Romance')
 ```
 
-Graph variables in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.
+### Graph variables in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.
 
-```{r }
+```{r genre_resid}
 # graph residuals against each variable included in the model
 # most look random except Adventure
-train <- train %>% 
-  add_residuals(mod) %>%
-  mutate_at(vars(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
-                Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
-                Romance, SciFi, Sport, Thriller, War, Western),
-            funs(as.factor(.)))
+train_resid <- train %>% 
+  add_residuals(mod_genre, 'lresid') 
 
 lapply(genre_xvar, function(var) {
-  train %>% 
+  train_resid %>% 
     ggplot() + 
-    geom_boxplot(aes_string(var, y = 'resid'))
+    geom_boxplot(aes_string(var, y = 'lresid'))
 })
 
 # graph residuals against each genre not included in the model 
 # several are questionable if random. Especially Animation.
-lapply(names(train_genre %>% select(-genre_xvar)), function(var) {
-  train %>% 
+lapply(names(train_genre_only %>% select(-genre_xvar)), function(var) {
+  train_resid %>% 
     ggplot() + 
-    geom_boxplot(aes_string(var, y = 'resid'))
+    geom_boxplot(aes_string(var, y = 'lresid'))
 })
 ```
 
-Plot QQ plot for residuals. Not normally distributed, but close-ish.
+### Plot QQ plot for residuals. Not normally distributed, but close-ish.
 
 ```{r qq}
 # residuals themselves are NOT normally distributed 
 # qq plot 
-train %>% ggplot() + 
-  geom_qq(aes(sample = resid))
+train_resid %>% ggplot() + 
+  geom_qq(aes(sample = lresid))
 
 ```
 
+
+### Plot Predictions
+Plot prediction for mean real revenue against each genre included in the model.  Looks pretty accurate!  
+
+```{r predictions}
+train_pred <- train %>%
+  add_predictions(mod_genre, 'lpred') %>%
+  mutate(pred = exp(lpred)) 
+
+lapply(genre_xvar, function(var) {
+  train_pred %>% 
+    ggplot(aes_string(x = var)) + 
+    geom_boxplot(aes(y = real_gross)) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+               aes(y = mean), color = 'red', size = 2)
+})
+```
 
 ## Glmnet: sparse 
 Quickly try this new method from class instead of stepwise. The sparse version does give us a lot of the same variables as stepwise. Good sign!  
@@ -191,14 +219,99 @@ Can't do statistical tests, so not useful for analysis, but can use to aid justi
 library(glmnet)
  
 # matrix of x and y variables
-x <- as.matrix(train_genre)
+x <- as.matrix(train_genre_only %>% mutate_all(funs(as.numeric(as.character(.)))))
 y <- as.matrix(train$real_gross_log)
 
 # glmnet process form class 
-mod <- glmnet(x, y, family = 'gaussian')
-plot(mod, xvar = 'lambda', label = TRUE)
-mod2 <- cv.glmnet(x, y)
-plot(mod2)
-coef(mod2, s = 'lambda.min') # use min lambda
-coef(mod2, s = 'lambda.1se') # use most sparse
+mod_sparse <- glmnet(x, y, family = 'gaussian')
+plot(mod_sparse, xvar = 'lambda', label = TRUE)
+mod_sparse <- cv.glmnet(x, y)
+plot(mod_sparse)
+coef(mod_sparse, s = 'lambda.min') # use min lambda
+coef(mod_sparse, s = 'lambda.1se') # use most sparse
 ```
+
+
+# Fit model with other variables 
+
+## Plot residuals of other variables based on the genre model. 
+All of these plots indicate a relationship that is not fully represented in the model yet and thus all are valid candidates for including in the model (also given their relatively linear relationships)
+   
+For example, movies with lower budgets make less revenue than predicted by the genres in the model (negative residual) and movies with higher budgets make more revenue than predicted by genre (positive residual). Cast facebook likes, director facebook likes, and IMDB score follow a similar pattern.  
+Year is opposite where movies in more recent years have less revenue than predicted by genre  
+  
+Content rating has more of a random relationship with the residual. Perhaps this is because genres and content ratings have some correlation (i.e. Family movies tend to be G or PG while Horror tend to be R) and thus this relationship may have already been captured.  
+There is some indication that R movies may make less revenue than predicted and PG-13 movies make more revenue than predicted. 
+
+```{r other_resid}
+# get log versions of variables since residuals are log: same scale 
+train_resid <- train_resid %>%
+  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score', 'year'), funs(log = log(.)))
+
+# graph each against log residual: continuous
+lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score', 'year'), function(var) {
+  print(var)
+  train_resid %>% 
+    ggplot() + 
+    geom_point(aes_string(str_c(var, '_log'), y = 'lresid'))
+})
+
+# content rating: categorical 
+# note can't log categorical variables 
+train_resid %>% 
+  filter(!is.na(content_rating)) %>%
+  ggplot() + 
+  geom_boxplot(aes(content_rating, lresid))
+```
+
+Try stepwise selection with these other variables given that none had fully random relationships with the residual from the genre model. Use the fitted genre model as a base.  
+  
+For factor variables (content_rating, total_oscars) use normal versions of variables.  
+For facebook likes, use log versions as those were more linear with log(real_gross).  
+For budget and IMDB score, I think log versions are better, but try the non-log versions too. Both had some linearity.  
+For year, use normal version.  
+```{r other_step}
+# create log versions of continuous variables
+# also turn -Inf from log(0) to NA 
+train <- train %>% 
+  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score', 'year'), funs(log = log(.))) %>%
+  mutate_at(vars(contains('log')), funs(ifelse(is.infinite(.), NA, .)))
+valid <- valid %>% 
+  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score', 'year'), funs(log = log(.))) %>%
+  mutate_at(vars(contains('log')), funs(ifelse(is.infinite(.), NA, .)))
+
+# starting formula: genre
+starting_formula = 'Adventure + Action + Family + Mystery + Documentary + Drama + History + Romance'
+
+# stepwise starting with genre 
+rmse_lst <- step_wise_loop(df = train %>% select(genre_xvar, content_rating, real_budget, year, 
+                                                 total_oscars_actor, total_oscars_director,
+                                                 imdb_score_log, real_budget_log,
+                                                 director_facebook_likes_log, cast_total_facebook_likes_log),
+                           starting_vars = genre_xvar, 
+                           starting_formula = starting_formula)
+
+# graph RMSE vs number of variables
+fit_rmse <- tibble(nvar = 1:length(rmse_lst), 
+                   rmse = rmse_lst)
+ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+ 
+  scale_x_continuous(breaks = seq(1, length(rmse_lst), by = 1))
+# after var 4, decreases too small or increase 
+
+# model with extra 4 variables
+mod_all <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
+                  Documentary + Drama + History + Romance + 
+                  real_budget_log + imdb_score_log + year + content_rating, 
+          data = train)
+
+summary(mod_all)
+rmse(mod_all, data = valid)
+```
+## TO DO  
+  
+* Graph residuals of included and excluded variables against this model
+* Some of the genre variables are now insigificant -> try full step wise from scratch. Some of these shouldn't be included? 

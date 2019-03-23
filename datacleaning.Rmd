@@ -89,6 +89,13 @@ movie <- as.tibble(movie)
 # rename Film-Noir and sci-Fi columns. The dashes make some later manipulation hard
 movie <- movie %>%
   rename(FilmNoir = 'Film-Noir', SciFi = 'Sci-Fi')
+
+# Make all genres factors
+movie <- movie %>% 
+  mutate_at(vars(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
+                Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
+                Romance, SciFi, Sport, Thriller, War, Western, FilmNoir, News, Short), 
+            funs(as.factor(.)))
 ```
 
 Recode some movie content ratings.  
@@ -108,6 +115,10 @@ movie <- movie %>%
          content_rating = ifelse(content_rating == 'Not Rated' | content_rating == 'Unrated' |
                                    content_rating == 'Approved' | content_rating == 'Passed',
                                 NA, content_rating)) 
+
+# make content rating a factor
+movie <- movie %>% 
+  mutate(content_rating = as.factor(content_rating))
       
 ```
 
@@ -294,15 +305,22 @@ movie <- movie %>%
 ## Outliers?
 
 Basic distribution graphs for each variable: major outliers?
-```{r graph_dist, figures = 'hide'}
+```{r graph_dist, eval = F}
 # numeric: histograms
 num_cols <- movie[unlist(lapply(movie, is.numeric))]
 lapply(names(num_cols), function(var) {
   ggplot(movie, aes_string(x = var)) + geom_histogram()
 })
+
+# factor: bar plot
+fact_cols <- movie[unlist(lapply(movie, is.factor))]
+lapply(names(fact_cols), function(var) {
+  ggplot(movie, aes_string(x = var)) + geom_bar()
+})
+
 # character: bar plot
 # specify these manually: dont want actors names, original genre column etc
-lapply(c('language', 'country', 'content_rating'), function(var) {
+lapply(c('language', 'country'), function(var) {
   ggplot(movie, aes_string(x = var)) + geom_bar()
 })
 ```
@@ -329,12 +347,12 @@ movie %>% arrange(desc(real_budget)) %>% select(movie_title, real_budget, budget
 # outliers appear to be legit
 
 # genres with very few films 
-movie %>% filter(FilmNoir == 1) # 1 
-movie %>% filter(News == 1) # 1
-movie %>% filter(Short == 1) # 1 
+movie %>% filter(FilmNoir == 1) %>% count() # 1 
+movie %>% filter(News == 1) %>% count() # 1
+movie %>% filter(Short == 1) %>% count()  # 1 
 # drop these three genres. All 3 of these movies also have other genres indicated
-movie %>% filter(Western == 1) # 52
-movie %>% filter(War == 1) # 88
+movie %>% filter(Western == 1) %>% count() # 52
+movie %>% filter(War == 1) %>% count() # 88
 # these have enough that they are ok. 
 ```
 
@@ -356,7 +374,7 @@ Choosing 60% train because data not that big to begin with so want to make sure 
 ```{r partition}
 set.seed(5)
 movie_sets <- resample_partition(movie, c(train = .6, valid = .2, test = .2))
-train <- as_tibble(movie_sets$train) # 1885
+train <- as_tibble(movie_sets$train) # 1884
 valid <- as_tibble(movie_sets$valid) # 629
 test <- as_tibble(movie_sets$test) # 629
 ```

@@ -136,7 +136,13 @@ train_sum <- train %>%
 plt <- ggplot(data = train_sum %>% filter(year >= 1995))
 plt + 
   geom_line(aes(x = year, y = real_gross_avg)) +
-  labs(title = 'Average Real Gross Revenue Over Time', x = 'Year', y = 'Average Real Gross Revenue ($)') 
+  labs(title = 'Average Real Gross Revenue Over Time', x = 'Year', y = 'Average Real Gross Revenue ($)') + 
+    geom_rect(aes(xmin = 2008, xmax = 2010, 
+                ymin = min(real_gross_avg, na.rm = T), 
+                ymax = max(real_gross_avg, na.rm = T)), alpha = .05) +
+  geom_rect(aes(xmin = 2001, xmax = 2002, 
+                ymin = min(real_gross_avg, na.rm = T), 
+                ymax = max(real_gross_avg, na.rm = T)), alpha = .05) 
 plt + 
   geom_line(aes(x = year, y = real_gross_avg_log)) +
   labs(title = 'Average Log Real Gross Revenue Over Time', x = 'Year', y = 'Average Log Real Gross Revenue ($)') 
@@ -155,9 +161,8 @@ _Each individual rating has an significantly different average mean real revenue
 train_content <- train %>%
   # filter out missing
   filter(!is.na(content_rating)) %>%
-  # Make content rating a factor so can order in graphics
-  mutate(content_rating = as.factor(content_rating), 
-         content_rating = reorder(content_rating, real_gross))
+  # reorder content rating based on gross
+  mutate(content_rating = reorder(content_rating, real_gross))
 
 # boxplot 
 train_content  %>% 
@@ -236,8 +241,8 @@ train_genre <- train %>%
   gather(genre_cols, key = genre, value = yes) %>%
   # only keep when 'yes' is 1 (yes it is of that genre) %>%
   filter(yes == 1) %>%
-  # make genre a factor and order by real_gross
-  mutate(genre = as.factor(genre), genre = reorder(genre, real_gross)) 
+  # reorder genre by real_gross
+  mutate(genre = reorder(genre, real_gross)) 
 
 # bar graph 
 train_genre %>% 
