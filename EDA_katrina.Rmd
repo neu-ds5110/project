@@ -17,6 +17,7 @@ library(stringr)
 library(lubridate)
 library(modelr)
 library(tis)
+library(scales)
 ```
 
 ## Load cleaned data
@@ -27,9 +28,12 @@ load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 
 ## Log 
 
+Note: when graphing, better to use the non-log version of a variable and add scale_x_continuous() and scale_y_continuous().  
+However, when we are graphing means, this is not possible. Would graph log(mean(var)) rather than mean(log(var)), which is what we prefer.  
+
 ```{r log}
 train <- train %>% 
-  mutate_at(vars(real_gross, real_budget, director_facebook_likes, cast_total_facebook_likes, imdb_score), funs(log = log(.)))
+  mutate_at(vars(real_gross, real_budget, director_facebook_likes, cast_total_facebook_likes, imdb_score), funs(log = log10(.)))
 ```
 ## Oscars 
 
@@ -47,37 +51,36 @@ train_oscar_director <- train %>%
   summarize(avg_real_gross = mean(real_gross),
             avg_real_gross_log = mean(real_gross_log))
 
-# Functions to graph number of Oscars held by actors in movie vs. real revenue 
+# Functions to graph number of Oscars held by actors in 1movie vs. real revenue 
 # boxplot
 oscar_box <- function(df, var, title_str, x_str) {
-  print(ggplot(df, aes_string(var, "real_gross")) + 
-    geom_boxplot() + 
+  plt_base <- ggplot(df, aes_string(var, "real_gross")) + 
+    geom_boxplot() 
+  print(plt_base + 
     labs(title = title_str, x = x_str, y = 'Real Gross Revenue ($)'))
-  print(ggplot(df, aes_string(var, "real_gross_log")) + 
-    geom_boxplot() + 
-    labs(title = title_str, x = x_str, y = 'Log Real Gross Revenue ($)'))
+  print(plt_base +
+    labs(title = title_str, x = x_str, y = 'Log Real Gross Revenue ($)') + 
+      scale_y_log10())
 }
 
 # bar graph 
+# can't do scale_y_log10() with average
 oscar_bar <- function(df, var, title_str, x_str) {
   print(ggplot(df, aes_string(var, "avg_real_gross")) + 
     geom_col() + 
     labs(title = title_str, x = x_str, y = 'Average Real Gross Revenue ($)'))
-  print(ggplot(df, aes_string(var, "avg_real_gross_log")) + 
+  print(ggplot(df, aes_string(var, 'avg_real_gross_log')) + 
     geom_col() + 
-    labs(title = title_str, x = x_str, y = 'Average Log Real Gross Revenue ($)'))
+    labs(title = title_str, x = x_str, y = 'Average Log Real Gross Revenue (Log $)')) 
 }
 
 # actors
-oscar_box(train, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 
-          'Total # Oscars Held by Actors in Movie')
-oscar_bar(train_oscar_actor, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 
-          'Total # Oscars Held by Actors in Movie vs Log Real Revenue')
+oscar_box(train, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 'Total # Oscars Held by Actors in Movie')
+oscar_bar(train_oscar_actor, 'total_oscars_actor', 'Total # Oscars of Actors vs Real Gross Revenue', 'Total # Oscars Held by Actors in Movie vs Log Real Revenue')
 
 # directors
-oscar_box(train, 'total_oscars_director', 'Total # Oscars of Directors vs Real Gross Revenue', 
-          'Total # Oscars Held by Directors in Movie')
-oscar_bar(train_oscar_director, 'total_oscars_director', 'Total # Oscars of Directors vs Real Gross     Revenue', 'Total # Oscars Held by Directors in Movie vs Log Real Revenue')
+oscar_box(train, 'total_oscars_director', 'Total # Oscars of Directors vs Real Gross Revenue', 'Total # Oscars Held by Directors in Movie')
+oscar_bar(train_oscar_director, 'total_oscars_director', 'Total # Oscars of Directors vs Real Gross Revenue', 'Total # Oscars Held by Directors in Movie vs Log Real Revenue')
 
 ```
 
@@ -88,28 +91,24 @@ Not as strong a relationship as I originally expected. Not sure this is worth in
 
 ```{r facebook}
 facebook_plot <- function(xvar, xlab) {
- print(train %>%
+ base_plt <- train %>%
     ggplot(aes_string(x = xvar, y = 'real_gross')) + 
     geom_point() + 
-    geom_smooth() + 
+    geom_smooth()
+ 
+  print(base_plt + 
     labs(x = xlab, y = 'Real Gross Revenue ($)'))
- print(train %>%
-    ggplot(aes_string(x = str_c(xvar, '_log'), y = 'real_gross')) + 
-    geom_point() + 
-    geom_smooth() + 
-    labs(x = str_c('Log ', xlab), y = 'Real Gross Revenue ($)'))
- print(train %>%
-    ggplot(aes_string(x = xvar, y = 'real_gross_log')) + 
-    geom_point() + 
-    geom_smooth() + 
-    labs(x = xlab, y = 'Log Real Gross Revenue ($)'))
- print(train %>%
-    ggplot(aes_string(x = str_c(xvar, '_log'), y = 'real_gross_log')) + 
-    geom_point() + 
-    geom_smooth() + 
-    labs(x = str_c('Log ', xlab), y = 'Log Real Gross Revenue ($)'))
+  print(base_plt + 
+          labs(x = str_c('Log ', xlab), y = 'Real Gross Revenue ($)') + 
+          scale_x_log10())
+  print(base_plt + 
+          labs(x = xlab, y = 'Log Real Gross Revenue ($)') + 
+          scale_y_log10())
+  print(base_plt + 
+          labs(x = str_c('Log ', xlab), y = 'Log Real Gross Revenue ($)') + 
+          scale_x_log10() + scale_y_log10())
 }
-
+  
 facebook_plot('cast_total_facebook_likes', 'Total Cast Facebook Likes')
 facebook_plot('director_facebook_likes', 'Director Facebook Likes')
 
@@ -123,30 +122,68 @@ Real revenue increase during recessions, but then decreases as recession worsens
 Regardless, clear that year could have an effect
 
 ```{r year}
-# take average of revenue per year
+# take average of revenue per year: how does revenue evolve over time? 
 train_sum <- train %>%
   group_by(year) %>%
-  summarize(real_gross_avg = mean(real_gross),
-            real_gross_avg_log = mean(real_gross_log))
+  summarize(real_gross_avg = mean(real_gross))
 
 # need to limit because before 1995 there are very few observations per year (< 10 usually). 
 # this causes large spikes because one high earning or low earning movie influences the average heavily
 # Starting at 1995, where have at least 30 (or very close) movies per year. Now can see movements over time 
 
-plt <- ggplot(data = train_sum %>% filter(year >= 1995))
-plt + 
-  geom_line(aes(x = year, y = real_gross_avg)) +
+ggplot(data = train_sum %>% filter(as.integer(as.character(year)) >= 1995)) +
+  geom_line(aes(x = as.integer(as.character(year)), y = real_gross_avg)) +
   labs(title = 'Average Real Gross Revenue Over Time', x = 'Year', y = 'Average Real Gross Revenue ($)') + 
     geom_rect(aes(xmin = 2008, xmax = 2010, 
                 ymin = min(real_gross_avg, na.rm = T), 
                 ymax = max(real_gross_avg, na.rm = T)), alpha = .05) +
   geom_rect(aes(xmin = 2001, xmax = 2002, 
                 ymin = min(real_gross_avg, na.rm = T), 
-                ymax = max(real_gross_avg, na.rm = T)), alpha = .05) 
-plt + 
-  geom_line(aes(x = year, y = real_gross_avg_log)) +
-  labs(title = 'Average Log Real Gross Revenue Over Time', x = 'Year', y = 'Average Log Real Gross Revenue ($)') 
+                ymax = max(real_gross_avg, na.rm = T)), alpha = .05)
 
+# now treat year as a factor and create box plots and average bar plots using log transformations
+train_year <- train %>%
+  filter(as.integer(as.character(year)) >= 1995) %>%
+  mutate(year = reorder(year, real_gross)) 
+
+# box plot
+plt_base <- train_year %>% 
+  ggplot() + 
+  geom_boxplot(aes(x = year, y = real_gross, fill = year)) + 
+  theme(legend.position = 'none') + 
+  coord_flip()
+plt_base + 
+  labs(x = 'Year', y = 'Real Gross Revenue ($)',
+       title = 'Year vs Real Gross Revenue in Order')
+plt_base +
+   labs(x = 'Year', y = 'Log Real Gross Revenue ($)',
+       title = 'Year vs Log Real Gross Revenue') + 
+  scale_y_log10()
+
+# bar plot
+train_year %>%
+  # average revenue by content rating
+  group_by(year) %>%
+  summarize(avg_real_gross = mean(real_gross)) %>%
+  ggplot() +
+  geom_col(aes(x = year, y = avg_real_gross, fill = year)) +
+  labs(x = 'Year', y = 'Average Real Gross Revenue ($)',
+  title = 'Year vs Average Real Gross Revenue') +
+  theme(legend.position = 'none') + 
+  coord_flip()
+# log
+# would like to use scale_y_log10() but can't since mean
+train_year %>%
+  mutate(year = reorder(year, real_gross_log)) %>%
+  # average revenue by content rating
+  group_by(year) %>%
+  summarize(avg_real_gross_log = mean(real_gross_log)) %>%
+  ggplot() +
+  geom_col(aes(x = year, y = avg_real_gross_log, fill = year)) +
+  labs(x = 'Year', y = 'Average Log Real Gross Revenue (Log $)',
+  title = 'Year vs Average Log Real Gross Revenue') +
+  theme(legend.position = 'none') + 
+  coord_flip()
 ```
 
 ## Content Rating 
@@ -165,39 +202,40 @@ train_content <- train %>%
   mutate(content_rating = reorder(content_rating, real_gross))
 
 # boxplot 
-train_content  %>% 
+plt_base <- train_content  %>% 
   ggplot() + 
   geom_boxplot(aes(x = content_rating, y = real_gross, fill = content_rating)) +
-  labs(x = 'Content Rating', y = 'Real Gross Revenue ($)', 
-       title = 'Content Rating vs Real Gross Revenue') + 
   theme(legend.position = 'none')
-train_content  %>% 
-  ggplot() + 
-  geom_boxplot(aes(x = content_rating, y = real_gross_log, fill = content_rating)) +
+plt_base +   
+  labs(x = 'Content Rating', y = 'Real Gross Revenue ($)', 
+       title = 'Content Rating vs Real Gross Revenue')
+plt_base + 
   labs(x = 'Content Rating', y = 'Log Real Gross Revenue ($)', 
        title = 'Content Rating vs Log Real Gross Revenue') + 
-  theme(legend.position = 'none')
+  scale_y_log10()
 
 # bar graph
-train_content  %>% 
+train_content %>%
   # average revenue by content rating
   group_by(content_rating) %>%
   summarize(avg_real_gross = mean(real_gross)) %>%
-  ggplot() + 
+  ggplot() +
   geom_col(aes(x = content_rating, y = avg_real_gross, fill = content_rating)) +
-  labs(x = 'Content Rating', y = 'Average Real Gross Revenue ($)', 
-       title = 'Content Rating vs Average Real Gross Revenue') + 
+  labs(x = 'Content Rating', y = 'Average Real Gross Revenue ($)',
+  title = 'Content Rating vs Average Real Gross Revenue') +
   theme(legend.position = 'none')
-
-train_content  %>% 
+# log
+# would like to use scale_y_log10() but can't since mean
+train_content %>%
   # average revenue by content rating
   group_by(content_rating) %>%
   summarize(avg_real_gross_log = mean(real_gross_log)) %>%
-  ggplot() + 
+  ggplot() +
   geom_col(aes(x = content_rating, y = avg_real_gross_log, fill = content_rating)) +
-  labs(x = 'Content Rating', y = 'Average Log Real Gross Revenue ($)', 
-       title = 'Content Rating vs Average Log Real Gross Revenue') + 
+  labs(x = 'Content Rating', y = 'Average Log Real Gross Revenue (Log $)',
+  title = 'Content Rating vs Average Log Real Gross Revenue') +
   theme(legend.position = 'none')
+
 
 # graph each content rating 0/1 against mean revenue: is there a difference?
 lapply(unique(train_content$content_rating), function(r) {
@@ -208,7 +246,7 @@ lapply(unique(train_content$content_rating), function(r) {
     group_by(rating_dum) %>%
     summarize(avg_real_gross = mean(real_gross)) %>%
     ggplot() + 
-    geom_col(aes(x = rating_dum, y = avg_real_gross)) +
+    geom_col(aes(x = rating_dum, y = avg_real_gross)) + 
     labs(x = r, y = 'Average Real Gross Revenue ($)')
 })
 
@@ -221,7 +259,7 @@ lapply(unique(train_content$content_rating), function(r) {
     summarize(avg_real_gross_log = mean(real_gross_log)) %>%
     ggplot() + 
     geom_col(aes(x = rating_dum, y = avg_real_gross_log)) +
-    labs(x = r, y = 'Average Log Real Gross Revenue ($)')
+    labs(x = r, y = 'Average Log Real Gross Revenue (Log $)')
 })
 
 ```
@@ -243,6 +281,22 @@ train_genre <- train %>%
   filter(yes == 1) %>%
   # reorder genre by real_gross
   mutate(genre = reorder(genre, real_gross)) 
+
+# boxplot
+plt_base <- train_genre %>%
+  ggplot() + 
+  geom_boxplot(aes(x = genre, y = real_gross, fill = genre)) + 
+  coord_flip() +  
+  theme(legend.position = 'none')
+
+plt_base + 
+  labs(x = 'Genre', y = 'Real Gross Revenue ($)',
+       title = 'Genre vs Real Gross Revenue') 
+plt_base + 
+  labs(x = 'Genre', y = 'Log Real Gross Revenue ($)',
+       title = 'Genre vs Log Real Gross Revenue') + 
+  scale_y_log10()
+
 
 # bar graph 
 train_genre %>% 
@@ -267,25 +321,10 @@ train_genre %>%
   ggplot() + 
   geom_col(aes(x = genre, y = avg_real_gross_log, fill = genre)) + 
   coord_flip() + 
-  labs(x = 'Genre', y = 'Average Log Real Gross Revenue ($)',
+  labs(x = 'Genre', y = 'Average Log Real Gross Revenue (Log $)',
        title = 'Genre vs Average Log Real Gross Revenue') + 
   theme(legend.position = 'none')
 
-# boxplot
-train_genre %>%
-  ggplot() + 
-  geom_boxplot(aes(x = genre, y = real_gross, fill = genre)) + 
-  coord_flip() + 
-  labs(x = 'Genre', y = 'Real Gross Revenue ($)',
-       title = 'Genre vs Real Gross Revenue') + 
-  theme(legend.position = 'none')
 
-train_genre %>%
-  ggplot() + 
-  geom_boxplot(aes(x = genre, y = real_gross_log, fill = genre)) + 
-  coord_flip() + 
-  labs(x = 'Genre', y = 'Log Real Gross Revenue ($)',
-       title = 'Genre vs Log Real Gross Revenue') + 
-  theme(legend.position = 'none')
 ```
 

@@ -98,6 +98,7 @@ movie <- movie %>%
             funs(as.factor(.)))
 ```
 
+
 Recode some movie content ratings.  
     
 X replaced by NC-17 in 1990, M replaced by PG.  
@@ -300,6 +301,12 @@ movie <- movie %>%
                                               '0' = '0',
                                               '1 or more' = c('1', '2')))
 
+```
+
+
+Make the year variable a factor
+```{r year_fct}
+movie <- movie %>% mutate(year = as.factor(year))
 ```
 
 ## Outliers?
