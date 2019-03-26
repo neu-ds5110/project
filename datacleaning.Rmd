@@ -254,6 +254,17 @@ movie <- movie %>%
          real_gross = gross / gdpd)
 ```
 
+## Create alternative response variables
+Revenue as percent of budget, indicator variable for if break even or not
+
+```{r alt_response}
+movie <- movie %>%
+  mutate(rev_budget = real_gross / real_budget,
+         profit_dum = ifelse(rev_budget > 1, 1, 0),
+         profit_dum = ifelse(rev_budget <= 1, 0, profit_dum))
+```
+
+
 ## Merge Movie and Actor Oscar Data 
 
 Merge 4 times: once for each of the 3 actor columns in the movie dataset and once for director. Get the total number of oscars for that person at the time of the movie release.  
@@ -308,6 +319,7 @@ Make the year variable a factor
 ```{r year_fct}
 movie <- movie %>% mutate(year = as.factor(year))
 ```
+
 
 ## Outliers?
 
