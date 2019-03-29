@@ -5,6 +5,9 @@ date: "March 18, 2019"
 output: pdf_document
 ---
 
+###### NEED to recheck all of the modeling b/c slightly changed data (30 fewer observations)
+# cut off points on step graphs different, order of variables in step different 
+
 ```{r}
 rm(list = ls())
 ```
@@ -25,47 +28,20 @@ library(tis)
 load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 ```
 
-# Fit Model with Genre Variables vs Real Revenue
-
-## Step Wise Selection
-End model includes (in order of steps): 'Adventure', 'Action', 'Family', 'Mystery', 'Documentary', 'Drama', 'History', 'Romance'  
-  
-Dependent variable is log(real_gross). Makes model look better _and_ a lot of the relationships with other variables are more linear with log, so we will need to use this as y variable in the main model.  
-    
-This model selection by and large makes sense. All included variables are significant at some level.  
-However, according to Qiang's graphs in EDA, some of the included genres do not make a real difference to real_gross. Especially History. Also, some genres that look like they would make a signficant difference are not included. For example, Animation.
-  
-Thoughts:  
-  
-* There are a few genres that define almost all of the movies (For example, almost 80% of the movies are either Adventure, Action, Romance, or Drama). Thus, the relationship between revenue and some genres can be explained by other generes. For example, 93 out of 99 Animation movies are also Family. So Animation's effect on revenue may already by captured by Family, which is included in the model.
-* On the flip side, History is included even though it seems to have a negligable effect on revenue based on the EDA bar graphs. I don't have a great explanation for this other than it was close to the cutoff RMSE for being included. 53 out of 55 History movies are also Drama. So unclear why included.  
-   
-Also, the residuals are debatably random vs included and excluded variables in model (not sure if these are not-random enough to matter -- see graphs).  
-More concerning is the fact that the residuals themselves are not Normal. See QQ-Plot (close-ish...)
-
-```{r exmaples, eval = F}
-train %>% filter(Animation == 1, Family == 1) %>% count() # 93
-train %>% filter(Animation == 1) %>% count() # 101
-
-train %>% filter(History == 1) %>% count() # 55
-train %>% filter(History == 1, Drama == 1) %>% count() # 53
-
+```{r drop years}
+# need to drop years before 1980: too sparse
+  # most of those years have 1 or 0 observations. If including year in the model, we aren't getting any information from those and it makes it impossible to fit on both train and valid because the levels of the factor are different
+# only necessary when including year in model, but hard to compare different models then b/c data different sizes
+train <- train %>% filter(as.integer(as.character(year)) >= 1980)
+valid <- valid %>% filter(as.integer(as.character(year)) >= 1980)
 ```
 
-Which genres should we be using?  
-Note: not using the step() function because can't fit and find RMSE on different datasets (train, valid)
 
+### Write Functions to Automate
 
+Write function to automate stepwise     
+Note: not using the step() function because can't fit and find RMSE on different datasets (train, valid)    
 ```{r step_wise_fn}
-# version of train set with just genre columns to loop through 
-train_genre_only <- train %>% select(Action, Adventure, Animation, Biography, Comedy, Crime, Documentary,
-                Drama, Family, Fantasy, History, Horror, Music, Musical, Mystery,
-                Romance, SciFi, Sport, Thriller, War, Western)
-
-# calculate log(real_gross)
-train <- train %>% mutate(real_gross_log = log10(real_gross))
-valid <- valid %>% mutate(real_gross_log = log10(real_gross))
-
 # function to automate each step of stepwise variable selection
 # df_vars is the dataset with only the relevant variables 
 # var_lst is the list of variables that are in the base model
@@ -128,7 +104,82 @@ step_wise_loop <- function(df_vars, starting_vars = NULL, starting_formula = NUL
 
 ```
 
-```{r step_wise}
+Function to graph the residuals from a model against all potential variables (included and excluded) 
+
+```{r residual_fn}
+gr_resid <- function(mod) {
+  # graph residuals 
+  # get log versions of variables since residuals are log: same scale 
+  df_resid <- train %>%
+    add_residuals(mod, 'lresid') %>%
+    mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+           'imdb_score'), funs(log = log10(.)))
+  
+  # graph each against log residual: continuous
+  lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+           'imdb_score'), function(var) {
+    print(df_resid %>% 
+      ggplot() + 
+      geom_point(aes_string(str_c(var, '_log'), y = 'lresid')))
+  })
+  
+  # categorical 
+  # can't log categorical variables 
+  lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director', all_genre_vars), function(var) {
+    print(df_resid %>%
+      filter(!is.na(!!rlang::sym(var))) %>%
+      ggplot() + 
+      geom_boxplot(aes_string(var, 'lresid')))
+  })
+  
+  # qq plot of residuals
+  df_resid %>% ggplot() + 
+    geom_qq(aes(sample = lresid))
+}
+```
+
+# Fit Model with Genre Variables vs Real Revenue
+
+## Step Wise Selection
+End model includes (in order of steps): 'Adventure', 'Action', 'Family', 'Mystery', 'Documentary', 'Drama', 'History', 'Romance'  
+  
+Dependent variable is log(real_gross). Makes model look better _and_ a lot of the relationships with other variables are more linear with log, so we will need to use this as y variable in the main model.  
+    
+This model selection by and large makes sense. All included variables are significant at some level.  
+However, according to Qiang's graphs in EDA, some of the included genres do not make a real difference to real_gross. Especially History. Also, some genres that look like they would make a signficant difference are not included. For example, Animation.
+  
+Thoughts:  
+  
+* There are a few genres that define almost all of the movies (For example, almost 80% of the movies are either Adventure, Action, Romance, or Drama). Thus, the relationship between revenue and some genres can be explained by other generes. For example, 93 out of 99 Animation movies are also Family. So Animation's effect on revenue may already by captured by Family, which is included in the model.
+* On the flip side, History is included even though it seems to have a negligable effect on revenue based on the EDA bar graphs. I don't have a great explanation for this other than it was close to the cutoff RMSE for being included. 53 out of 55 History movies are also Drama. So unclear why included.  
+   
+Also, the residuals are debatably random vs included and excluded variables in model (not sure if these are not-random enough to matter -- see graphs).  
+More concerning is the fact that the residuals themselves are not Normal. See QQ-Plot (close-ish...)
+
+```{r exmaples, eval = F}
+train %>% filter(Animation == 1, Family == 1) %>% count() # 93
+train %>% filter(Animation == 1) %>% count() # 101
+
+train %>% filter(History == 1) %>% count() # 52
+train %>% filter(History == 1, Drama == 1) %>% count() # 51
+
+```
+
+## Model Fit
+
+Which genres should we be using?  
+```{r step_wise_genre}
+# version of train set with just genre columns to loop through 
+all_genre_vars <- c('Action', 'Adventure', 'Animation', 'Biography', 'Comedy', 'Crime', 'Documentary', 'Drama', 
+                    'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Musical', 'Mystery',
+                    'Romance', 'SciFi', 'Sport', 'Thriller', 'War', 'Western')
+
+train_genre_only <- train %>% select(all_genre_vars)
+
+# calculate log(real_gross)
+train <- train %>% mutate(real_gross_log = log10(real_gross))
+valid <- valid %>% mutate(real_gross_log = log10(real_gross))
+
 # step wise implement
 # return list of all min RMSE from each step -> graph
 rmse_lst <- step_wise_loop(df = train_genre_only)
@@ -143,13 +194,12 @@ fit_rmse <- tibble(nvar = 1:length(rmse_lst),
                    rmse = rmse_lst)
 ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+ 
   scale_x_continuous(breaks = seq(1, length(rmse_lst), by = 1))
-# after var 8, decreases too small or increase 
+# after var 8, decreases too small or increase (debatably 10?)
 
 # model based off of step wise 
 # HOWEVER some of these variables are insignificant 
   # (see pvalues and graphs from Qiang's EDA where barely any difference in revenue from genre)
-mod_genre <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
-            Documentary + Drama + History + Romance, 
+mod_genre <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + Romance + Drama + History + Documentary, 
           data = train)
 
 summary(mod_genre)
@@ -160,7 +210,7 @@ genre_xvar <- c('Adventure', 'Action', 'Family', 'Mystery',
                 'Documentary', 'Drama', 'History', 'Romance')
 ```
 
-### Graph variables in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.
+### Graph genres in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.
 
 ```{r genre_resid}
 # graph residuals against each variable included in the model
@@ -171,7 +221,8 @@ train_resid <- train %>%
 lapply(genre_xvar, function(var) {
   train_resid %>% 
     ggplot() + 
-    geom_boxplot(aes_string(var, y = 'lresid'))
+    geom_boxplot(aes_string(var, y = 'lresid')) 
+
 })
 
 # graph residuals against each genre not included in the model 
@@ -179,7 +230,7 @@ lapply(genre_xvar, function(var) {
 lapply(names(train_genre_only %>% select(-genre_xvar)), function(var) {
   train_resid %>% 
     ggplot() + 
-    geom_boxplot(aes_string(var, y = 'lresid'))
+    geom_boxplot(aes_string(var, y = 'lresid')) 
 })
 ```
 
@@ -195,20 +246,28 @@ train_resid %>% ggplot() +
 
 
 ### Plot Predictions
-Plot prediction for mean real revenue against each genre included in the model.  Looks pretty accurate!  
+Plot prediction for mean real revenue against each genre included in the model. 
 
-```{r predictions}
-train_pred <- train %>%
-  add_predictions(mod_genre, 'lpred') %>%
-  mutate(pred = exp(lpred)) 
+```{r pred_genre}
+train_pred <- train %>% add_predictions(mod_genre, 'lpred')
 
 lapply(genre_xvar, function(var) {
   train_pred %>% 
     ggplot(aes_string(x = var)) + 
-    geom_boxplot(aes(y = real_gross)) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
-               aes(y = mean), color = 'red', size = 2)
+    geom_boxplot(aes(y = real_gross_log)) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(lpred)),
+               aes(y = mean), color = 'red', size = 2) 
 })
+```
+
+Overall predictions: clearly not enough to just specify genres
+
+```{r pred_genre_all}
+train %>% 
+  add_predictions(mod_genre, 'lpred') %>%  
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross_log)) + 
+  geom_freqpoly(aes(x = lpred), color = 'blue') 
 ```
 
 ## Glmnet: sparse 
@@ -293,12 +352,6 @@ valid <- valid %>%
 starting_formula = 'Adventure + Action + Family + Mystery + Documentary + Drama + History + Romance'
 
 # stepwise starting with genre 
-# need to drop years before 1980: too sparse
-  # most of those years have 1 or 0 observations. If including year in the model, we aren't getting any information from those
-  # and it makes it impossible to fit on both train and valid because the levels of the factor are different
-train <- train %>% filter(as.integer(as.character(year)) >= 1980)
-valid <- valid %>% filter(as.integer(as.character(year)) >= 1980)
-
 rmse_lst <- step_wise_loop(df = train %>% select(genre_xvar, content_rating, real_budget, year, 
                                                  total_oscars_actor, total_oscars_director,
                                                  imdb_score_log, real_budget_log,
@@ -322,6 +375,9 @@ mod_all <- lm(real_gross_log ~ Adventure + Action + Family + Mystery +
 summary(mod_all)
 rmse(mod_all, data = valid)
 
+# when consider the factors as one variable, they are significant
+anova(mod_all)
+
 # number of observations
   # lost about 150 observations to missings
 nobs(mod_all)
@@ -332,34 +388,156 @@ nobs(mod_all)
 Graph residuals of included and excluded variables: have we captured all of the relationships? 
 
 ```{r mod_all_resid}
-# get log versions of variables since residuals are log: same scale 
-train_all_resid <- train %>%
-  add_residuals(mod_all, 'lresid') %>%
-  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
-         'imdb_score'), funs(log = log10(.)))
-
-# graph each against log residual: continuous
-lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
-         'imdb_score'), function(var) {
-  train_all_resid %>% 
-    ggplot() + 
-    geom_point(aes_string(str_c(var, '_log'), y = 'lresid'))
-})
-
-# categorical 
-# can't log categorical variables 
-lapply(c('content_rating', 'year', genre_xvar), function(var) {
-  train_all_resid %>%
-    filter(!is.na(!!rlang::sym(var))) %>%
-    ggplot() + 
-    geom_boxplot(aes_string(var, 'lresid'))
-})
-
-# qq plot of residuals
-train_all_resid %>% ggplot() + 
-  geom_qq(aes(sample = lresid))
+gr_resid(mod_all)
 ```
+
+## Prediction
+
+```{r pred_mod_all}
+train %>% 
+  add_predictions(mod_all, 'lpred') %>%
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross_log)) + 
+  geom_freqpoly(aes(x = lpred), color = 'blue')
+```
+
+# Fit Model W/O Assuming Genre 
+
+```{r model_nogenre}
+# stepwise
+# ALL potentially relevant variables
+rmse_lst <- step_wise_loop(df = train %>% select(all_genre_vars, content_rating, real_budget, year, 
+                                                 total_oscars_actor, total_oscars_director,
+                                                 imdb_score_log, real_budget_log,
+                                                 director_facebook_likes_log, cast_total_facebook_likes_log))
+
+
+# graph RMSE vs number of variables
+fit_rmse <- tibble(nvar = 1:length(rmse_lst), 
+                   rmse = rmse_lst)
+ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+ 
+  scale_x_continuous(breaks = seq(1, length(rmse_lst), by = 1))
+# after var 6, decreases too small or increase 
+
+mod_all2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + Comedy + content_rating + Mystery, 
+               data = train)
+
+summary(mod_all2) # still a lot of insignificant 
+rmse(mod_all2, data = valid) # fit is somewhat better (and fewer variables)
+
+# when consider factors as one variable, they are significant
+anova(mod_all2)
+
+# number of observations
+nobs(mod_all2)
+```
+
+## New Residuals
+
+Graph residuals of included and excluded variables: have we captured all of the relationships? 
+
+```{r mod_all2_resid}
+gr_resid(mod_all2)
+```
+
+## Prediction
+
+```{r pred_mod_all2}
+train %>% 
+  add_predictions(mod_all2, 'lpred') %>%  
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross_log)) + 
+  geom_freqpoly(aes(x = lpred), color = 'blue')
+```
+
+
+## Fit really simple model: Anova compare
+Budget and IMDB score are always very significant and decrease RMSE significantly.  
+Use this to compare with other more complex models via arima
+
+```{r simple_anova}
+# filter so that same sample size as mod_all models so can compare 
+mod_simple <- lm(real_gross_log ~ real_budget_log + imdb_score_log, data = train %>% filter(!is.na(content_rating)))
+
+# anova does show that the more complex models do explain real_gross_log better than simple
+anova(mod_all, mod_simple)
+anova(mod_all2, mod_simple)
+```
+
+## Start with budget and imdb
+Look at residual plots and determine what other variables should be added 
+
+```{r simple}
+mod_simple <- lm(real_gross_log ~ real_budget_log + imdb_score_log, data = train)
+
+gr_resid(mod_simple)
+```
+
+Use variables with non-random relationships to the residuals. Also added Documentary because there was a non-random relationship with the residuals after I fit this model with Documentary. 
+```{r simple_plus}
+mod_simple_plus <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + 
+                        Family + Western + Fantasy + Horror + Documentary, data = train)
+
+summary(mod_simple_plus)
+rmse(mod_simple_plus, data = valid)
+anova(mod_simple_plus)
+```
+
+Stepwise just with those variables with non-random relationships with residual
+```{r imdb_budget_step}
+# stepwise
+# ALL potentially relevant variables
+rmse_lst <- step_wise_loop(df = train %>% select(real_gross_log, real_budget_log, imdb_score_log, year,
+                                                 content_rating, Family, Western, Fantasy, Horror, 
+                                                 Documentary))
+
+# graph RMSE vs number of variables
+fit_rmse <- tibble(nvar = 1:length(rmse_lst), 
+                   rmse = rmse_lst)
+ggplot(fit_rmse) + geom_line(aes(x = nvar, y = rmse))+ 
+  scale_x_continuous(breaks = seq(1, length(rmse_lst), by = 1))
+# after var 4, decreases too small or increase 
+
+mod_simple_plus2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating,
+               data = train)
+
+summary(mod_simple_plus2)
+rmse(mod_simple_plus2, data = valid) 
+
+# when consider factors as one variable, they are significant
+anova(mod_simple_plus2)
+
+# number of observations
+nobs(mod_simple_plus2)
+```
+
+Predictions 
+```{r pred_mod_simple}
+train %>% 
+  add_predictions(mod_simple_plus, 'lpred') %>%  
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross_log)) + 
+  geom_freqpoly(aes(x = lpred), color = 'blue')
+
+train %>% 
+  add_predictions(mod_simple_plus2, 'lpred') %>%  
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross_log)) + 
+  geom_freqpoly(aes(x = lpred), color = 'blue')
+```
+
+Residuals
+```{r budget_imdb}
+gr_resid(mod_simple_plus)
+
+gr_resid(mod_simple_plus2) 
+# slightly non-random relationships with some of the variables that are included in mod_simple_plus. 
+# but those variables don't improve model fit enough
+```
+
+
 ## TO DO  
 
 Week: 
 * Some of the genre variables are now insigificant -> try full step wise from scratch. Some of these shouldn't be included? 
+* try adding all of the genre variables?? Does it make sense to not cover every movie with the genres? 
