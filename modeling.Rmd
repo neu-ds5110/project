@@ -4,10 +4,6 @@ author: "Katrina Truebebach"
 date: "March 18, 2019"
 output: pdf_document
 ---
-
-###### NEED to recheck all of the modeling b/c slightly changed data (30 fewer observations)
-# cut off points on step graphs different, order of variables in step different 
-
 ```{r}
 rm(list = ls())
 ```
@@ -210,7 +206,8 @@ genre_xvar <- c('Adventure', 'Action', 'Family', 'Mystery',
                 'Documentary', 'Drama', 'History', 'Romance')
 ```
 
-### Graph genres in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.
+### Graph genres in and out of model against residuals. Most are fairly evenly distributed around residual. Worst is probably Western.    
+I like this geom jitter view better. Can see individual points. Most movies have some outliers where actual makes less money than predicted based on the included genres. But tricky because movies are multiple genres. So could be because that movie is also another genre that makes less money. Bulk of observations around zero.  
 
 ```{r genre_resid}
 # graph residuals against each variable included in the model
@@ -221,16 +218,14 @@ train_resid <- train %>%
 lapply(genre_xvar, function(var) {
   train_resid %>% 
     ggplot() + 
-    geom_boxplot(aes_string(var, y = 'lresid')) 
-
+    geom_jitter(aes_string(var, y = 'lresid'), alpha = .3) 
 })
 
 # graph residuals against each genre not included in the model 
-# several are questionable if random. Especially Animation.
 lapply(names(train_genre_only %>% select(-genre_xvar)), function(var) {
   train_resid %>% 
     ggplot() + 
-    geom_boxplot(aes_string(var, y = 'lresid')) 
+    geom_jitter(aes_string(var, y = 'lresid'), alpha = .3) 
 })
 ```
 
@@ -448,6 +443,7 @@ train %>%
   ggplot() +
   geom_freqpoly(aes(x = real_gross_log)) + 
   geom_freqpoly(aes(x = lpred), color = 'blue')
+
 ```
 
 
