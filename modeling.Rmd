@@ -30,6 +30,16 @@ load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 # only necessary when including year in model, but hard to compare different models then b/c data different sizes
 train <- train %>% filter(as.integer(as.character(year)) >= 1980)
 valid <- valid %>% filter(as.integer(as.character(year)) >= 1980)
+
+# calculate logs
+train <- train %>% mutate(real_gross_log = log10(real_gross))
+valid <- valid %>% mutate(real_gross_log = log10(real_gross))
+train <- train %>%
+  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score'), funs(log = log10(.)))
+valid <- valid %>%
+  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score'), funs(log = log10(.)))
 ```
 
 
@@ -125,7 +135,7 @@ gr_resid <- function(mod) {
     print(df_resid %>%
       filter(!is.na(!!rlang::sym(var))) %>%
       ggplot() + 
-      geom_boxplot(aes_string(var, 'lresid')))
+      geom_jitter(aes_string(var, 'lresid'), alpha = .3))
   })
   
   # qq plot of residuals
@@ -171,10 +181,6 @@ all_genre_vars <- c('Action', 'Adventure', 'Animation', 'Biography', 'Comedy', '
                     'Romance', 'SciFi', 'Sport', 'Thriller', 'War', 'Western')
 
 train_genre_only <- train %>% select(all_genre_vars)
-
-# calculate log(real_gross)
-train <- train %>% mutate(real_gross_log = log10(real_gross))
-valid <- valid %>% mutate(real_gross_log = log10(real_gross))
 
 # step wise implement
 # return list of all min RMSE from each step -> graph
@@ -384,6 +390,16 @@ Graph residuals of included and excluded variables: have we captured all of the 
 
 ```{r mod_all_resid}
 gr_resid(mod_all)
+
+# two points with consistently really high residuals (greater than 2) i.e. based on all of their factors, they should've made less money than they did: Blair Witch Project and Paranormal Activity. R movies low revenue and low budget. 
+  ### make a graph labeling these and pointing out
+# often many points with large negative results less than -2: often get movies that are a flop. High budget etc., but people just don't like them 
+train %>% 
+  add_residuals(mod_all, 'lresid') %>%
+  filter(lresid > 2.1)
+train %>% 
+  add_residuals(mod_all, 'lresid') %>%
+  filter(lresid < -2)
 ```
 
 ## Prediction
@@ -433,6 +449,15 @@ Graph residuals of included and excluded variables: have we captured all of the 
 
 ```{r mod_all2_resid}
 gr_resid(mod_all2)
+
+# again blair and paranormal 
+train %>% 
+  add_residuals(mod_all2, 'lresid') %>%
+  filter(lresid > 2.1)
+train %>% 
+  add_residuals(mod_all2, 'lresid') %>%
+  filter(lresid < -2)
+
 ```
 
 ## Prediction
@@ -448,31 +473,32 @@ train %>%
 
 
 ## Fit really simple model: Anova compare
-Budget and IMDB score are always very significant and decrease RMSE significantly.  
+Budget always very significant and decreases RMSE significantly.  
 Use this to compare with other more complex models via arima
 
 ```{r simple_anova}
 # filter so that same sample size as mod_all models so can compare 
-mod_simple <- lm(real_gross_log ~ real_budget_log + imdb_score_log, data = train %>% filter(!is.na(content_rating)))
+mod_simple <- lm(real_gross_log ~ real_budget_log, data = train %>% filter(!is.na(content_rating)))
 
 # anova does show that the more complex models do explain real_gross_log better than simple
 anova(mod_all, mod_simple)
 anova(mod_all2, mod_simple)
 ```
 
-## Start with budget and imdb
-Look at residual plots and determine what other variables should be added 
+## Start with budget
+Look at residual plots and determine what other variables should be added    
+Budget has the most obvious relationship with revenue, both graphically and logically
 
 ```{r simple}
-mod_simple <- lm(real_gross_log ~ real_budget_log + imdb_score_log, data = train)
+mod_simple <- lm(real_gross_log ~ real_budget_log, data = train)
 
 gr_resid(mod_simple)
 ```
 
-Use variables with non-random relationships to the residuals. Also added Documentary because there was a non-random relationship with the residuals after I fit this model with Documentary. 
+Use variables with non-random relationships to the residuals. 
 ```{r simple_plus}
 mod_simple_plus <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + 
-                        Family + Western + Fantasy + Horror + Documentary, data = train)
+                        Family + Horror, data = train)
 
 summary(mod_simple_plus)
 rmse(mod_simple_plus, data = valid)
@@ -483,7 +509,7 @@ Stepwise just with those variables with non-random relationships with residual
 ```{r imdb_budget_step}
 # stepwise
 # ALL potentially relevant variables
-rmse_lst <- step_wise_loop(df = train %>% select(real_gross_log, real_budget_log, imdb_score_log, year,
+rmse_lst <- step_wise_loop(df = train %>% select(real_budget_log, imdb_score_log, year,
                                                  content_rating, Family, Western, Fantasy, Horror, 
                                                  Documentary))
 
@@ -505,6 +531,9 @@ anova(mod_simple_plus2)
 
 # number of observations
 nobs(mod_simple_plus2)
+
+# compare with anova
+anova(mod_simple_plus, mod_simple_plus2)
 ```
 
 Predictions 
@@ -531,9 +560,55 @@ gr_resid(mod_simple_plus2)
 # but those variables don't improve model fit enough
 ```
 
+## Try treating genre as one variable: they all need to be added at once 
+Step wise. Genre should not be included. 
+```{r}
+rmse(lm(real_gross_log ~ Action + Adventure + Animation + Biography + Comedy + Crime + Documentary
+        + Drama + Family + Fantasy + History + Horror + Music + Musical + Mystery + Romance + 
+          SciFi + Sport + Thriller + War + Western, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log, data = train), data = valid) # .649
+rmse(lm(real_gross_log ~ imdb_score_log, data = train), data = valid)
+rmse(lm(real_gross_log ~ year, data = train), data = valid)
+rmse(lm(real_gross_log ~ content_rating, data = train), data = valid)
+rmse(lm(real_gross_log ~ cast_total_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ director_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ total_oscars_actor, data = train), data = valid)
+rmse(lm(real_gross_log ~ total_oscars_director, data = train), data = valid)
 
-## TO DO  
+rmse(lm(real_gross_log ~ real_budget_log + Action + Adventure + Animation + Biography + Comedy + Crime + Documentary
+        + Drama + Family + Fantasy + History + Horror + Music + Musical + Mystery + Romance + 
+          SciFi + Sport + Thriller + War + Western, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log, data = train), data = valid) # .638
+rmse(lm(real_gross_log ~ real_budget_log + year, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + content_rating, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + cast_total_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + director_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + total_oscars_actor, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + total_oscars_director, data = train), data = valid)
 
-Week: 
-* Some of the genre variables are now insigificant -> try full step wise from scratch. Some of these shouldn't be included? 
-* try adding all of the genre variables?? Does it make sense to not cover every movie with the genres? 
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log +  Action + Adventure + Animation + Biography + Comedy + Crime + Documentary + Drama + Family + Fantasy + History + Horror + Music + Musical + Mystery + Romance + 
+          SciFi + Sport + Thriller + War + Western, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year, data = train), data = valid) # .628
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + content_rating, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + cast_total_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + director_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + total_oscars_actor, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + total_oscars_director, data = train), data = valid)
+
+
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year +  Action + Adventure + Animation + Biography + Comedy + Crime + Documentary + Drama + Family + Fantasy + History + Horror + Music + Musical + Mystery + Romance + 
+          SciFi + Sport + Thriller + War + Western, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating, data = train), data = valid) # .623
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + cast_total_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + director_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + total_oscars_actor, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + total_oscars_director, data = train), data = valid)
+
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + Action + Adventure + Animation + Biography + Comedy + Crime + Documentary + Drama + Family + Fantasy + History + Horror + Music + Musical + Mystery + Romance + SciFi + Sport + Thriller + War + Western, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + cast_total_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + director_facebook_likes, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + total_oscars_actor, data = train), data = valid)
+rmse(lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating + total_oscars_director, data = train), data = valid) # .623
+# RMSE has leveled off. not even including genre yet 
+
+```
