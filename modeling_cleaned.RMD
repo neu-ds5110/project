@@ -31,12 +31,16 @@ load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 # only necessary when including year in model, but hard to compare different models then b/c data different sizes
 train <- train %>% filter(as.integer(as.character(year)) >= 1980)
 valid <- valid %>% filter(as.integer(as.character(year)) >= 1980)
+test <- test %>% filter(as.integer(as.character(year)) >= 1980)
 
 # calculate logs
 train <- train %>%
   mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
          'imdb_score', 'real_gross'), funs(log = log10(.)))
 valid <- valid %>%
+  mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
+         'imdb_score', 'real_gross'), funs(log = log10(.)))
+test <- test %>%
   mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
          'imdb_score', 'real_gross'), funs(log = log10(.)))
 ```
@@ -112,10 +116,10 @@ step_wise_loop <- function(df_vars, starting_vars = NULL, starting_formula = NUL
 Function to graph the residuals from a model against all potential variables (included and excluded) 
 
 ```{r residual_fn}
-gr_resid <- function(mod) {
+gr_resid <- function(mod, df = train) {
   # graph residuals 
   # get log versions of variables since residuals are log: same scale 
-  df_resid <- train %>%
+  df_resid <- df %>%
     add_residuals(mod, 'lresid') %>%
     mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
            'imdb_score'), funs(log = log10(.)))
@@ -136,13 +140,7 @@ gr_resid <- function(mod) {
       ggplot() + 
       geom_jitter(aes_string(var, 'lresid'), alpha = .3))
   })
-  
-  # qq plot of residuals
-  df_resid %>% ggplot(aes(sample = lresid)) + 
-    geom_qq() + 
-    geom_qq_line() + 
-    labs(title = 'Residual QQPlot', 
-       x = 'Theoretical Quantiles', y = 'Sample Quantiles') 
+
 }
 ```
 
@@ -215,12 +213,14 @@ train %>% filter(History == 1, Drama == 1) %>% count() # 51
 ## Residuals graph
 I like this geom jitter view better. Can see individual points. Most movies have some outliers where actual makes less money than predicted based on the included genres. But tricky because movies are multiple genres. So could be because that movie is also another genre that makes less money. Bulk of observations around zero.  
 
+```{r}
+train_resid <- train %>% 
+  add_residuals(mod_genre, 'lresid')
+```
+
 ```{r genre_resid, fig.show = 'hide', results = 'hide', warning = F, message = F}
 # graph residuals against each variable included in the model
 # most look random except Adventure
-train_resid <- train %>% 
-  add_residuals(mod_genre, 'lresid')
-
 lapply(genre_xvar, function(var) {
   train_resid %>% 
     ggplot() + 
@@ -234,12 +234,14 @@ lapply(names(train_genre_only %>% select(-genre_xvar)), function(var) {
     geom_jitter(aes_string(var, y = 'lresid'), alpha = .3) 
 })
 ```
-Display a couple of plots for presentation: some diversity. But show all around 0 
+Display a couple of plots for presentation: some diversity. But show all around 0      
+     
 ```{r genre_resid_show, echo = F, results = 'hide', warning = F, message = F}
 lapply(c('Action', 'Drama', 'Western'), function(var) {
   train_resid %>% 
     ggplot() + 
     geom_jitter(aes_string(var, y = 'lresid'), alpha = .3) + 
+    geom_hline(aes(yintercept = 0)) + 
     labs(y = 'Log Residual')
 })
 ```
@@ -359,19 +361,22 @@ coef(mod_sparse, s = 'lambda.1se') # use most sparse
 # Use genre model as a base 
 Next, we started with the genre model and added in additional variables: clear that genre is not sufficient. Several steps:    
    
-*  Plot other variables (budget, facebook lides, imdb score, number of oscars, content rating, year) against the residuals from the genre model. 
-    *  All of these have somewhat non-random relationships with residuals. Especially budget and IMDB score. Movies with higher budgets make more revenue than predicted by genre (positive residual)
+*  Plot other variables (budget, facebook likes, total number of Oscars, imdb score, number of oscars, content rating, year) against the residuals from the genre model. 
+    +  All of these have somewhat non-random relationships with residuals. Especially budget and IMDB score. Movies with higher budgets make more revenue than predicted by genre (positive residual)
 *  Based on these non-random relationships, used them all in step wise, but started with the genre variables from the genre model as a base. 
+    + Log budget and IMDB score had the strongest relationships with log revenue in EDA. Facebook likes and Oscars had especially weak relationships. Thus the final variables included are not surprising.
 *  Looked at new residuals of included and excluded relationships. All fairly random.
+*  Looked at predictions for each individual variable. Good job even for variables not included in the model.   
+    +  Note that these predictions are not simple lines based on one coefficient because each movie's predicted revenue is based on several variables.  
+    +  Year isn't great. But in most years, other factors would be more important. But some years, such as recessions, it is very important which is why it is important to include. 
 *  Looked at predictions overall. Looks much better. 
-*  Looked at predictions for each individual variable: result?? 
 
    
 Overall, this is a pretty good model. Prediction is pretty good. Residuals are more normal. A lot of the variables are not significant, but they are significant when considered together in anova.  
-However, still not convinced this is the best model. Maybe not a valid assumption that we should start with genre, especially since a lot did come in insignificant. Perhaps these effects are being captured by other variables, so we should not start with the best assumption that we include genre.
+However, still not convinced this is the best model. I worry that it is overfitted and the genre variables are not necessay. Maybe it is not a valid assumption that we should start with genre, especially since a lot did come in as insignificant. Perhaps these effects are being captured by other variables, so we should not start with the best assumption that we include genre.
 
 
-```{r other_resid, fig.show = 'hide', message = F}
+```{r other_resid, fig.show = 'hide', results = 'hide', warning = F, message = F}
 train_resid <- train %>% 
   add_residuals(mod_genre, 'lresid')
 
@@ -393,6 +398,19 @@ lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director'
 })
 ```
 
+```{r other_resid_show, echo = F, results = 'hide', warning = F, message = F}
+train_resid <- train %>% 
+  add_residuals(mod_genre, 'lresid')
+
+# graph each against log residual: continuous (log scale)
+lapply(c('real_budget', 'imdb_score'), function(var) {
+  train_resid %>% 
+    ggplot() + 
+    geom_point(aes_string(str_c(var, '_log'), y = 'lresid')) + 
+    geom_hline(aes(yintercept = 0)) 
+})
+
+```
 
 ```{r other_step, results = 'hide', message = F}
 # For some log, need to turn -Inf from log(0) to NA 
@@ -454,6 +472,88 @@ train %>%
   filter(lresid < -2)
 ```
 
+```{r mod_all_qq}
+train %>% 
+  add_residuals(mod_all,'lresid') %>% 
+  ggplot(aes(sample = lresid)) + 
+    geom_qq() + 
+    geom_qq_line() + 
+    labs(title = 'Residual QQPlot: Improved, still Deviation at Tails', 
+       x = 'Theoretical Quantiles', y = 'Sample Quantiles') 
+```
+
+```{r pred_mod_all_individ, fig.show = 'hide', results = 'hide', warning = F, message = F}
+train_pred_all <- train %>% 
+  add_predictions(mod_all, 'lpred') %>%
+  mutate(pred = 10^lpred)
+
+# point because many factors. won't just be a single coefficient determining
+  # SEE BOOK where did prediction based on a bunch of variables 
+lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 'imdb_score'), function(var) {  
+    train_pred_all %>%
+    ggplot(aes_string(x = var)) + 
+    geom_point(aes(y = real_gross, color = 'Actual')) + 
+    geom_point(aes(y = pred, color = 'Predicted')) + 
+    scale_y_log10() + scale_x_log10()
+})
+
+# predictions against other genres
+lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director', all_genre_vars), function(var) {
+  train_pred_all %>% 
+    ggplot(aes_string(x = var)) + 
+    geom_boxplot(aes(y = real_gross)) + 
+    # include mean 
+    stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+               aes(y = mean), color = 'red', size = 2) +
+    scale_y_log10() 
+})
+```
+```{r pred_mod_all_individ_show, echo = F, results = 'hide', warning = F, message = F}
+
+# predictions against included variables
+con_gr <- function(v, title) {
+  lapply(c(v), function(var) {  
+      train_pred_all %>%
+      ggplot(aes_string(x = var)) + 
+      geom_point(aes(y = real_gross, color = 'Actual')) + 
+      geom_point(aes(y = pred, color = 'Predicted')) + 
+      scale_y_log10() + scale_x_log10() + 
+      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction',
+           x = title) + 
+      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  })
+}
+cat_gr <- function(v, title, flip = F) {
+  lapply(v, function(var) {
+    gr <- train_pred_all %>% 
+      filter(!is.na(!!rlang::sym(var))) %>%
+      ggplot(aes_string(x = var)) + 
+      geom_boxplot(aes(y = real_gross)) + 
+      # include mean 
+      stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+                 aes(y = mean), color = 'red', size = 2) +
+      scale_y_log10() + 
+      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
+           x = title)
+    if (flip) {
+      gr + coord_flip()
+    } else{
+      gr
+    }
+  })
+}
+
+con_gr('real_budget', 'Log Real Budget')
+con_gr('imdb_score', 'Log IMDB Score')
+con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
+
+cat_gr('content_rating', 'Content Rating')
+cat_gr('year', 'Year', flip = T)
+cat_gr('Animation', 'Animation')
+```
+
 ```{r pred_mod_all}
 train %>% 
   add_predictions(mod_all, 'lpred') %>%  
@@ -467,10 +567,348 @@ train %>%
 ```
 
 
+# Fit Model From Scratch
+Log budget and log revenue have the strongest and most linear relationship basd on EDA. Also it is very logical that they would be related. Start with budget.  
+
+   
+*  Plot other variables against the residuals from the budget model.
+  *  Non-random: year, IMDB score, content rating. All of these are somewhat subtle. Budget does a pretty good job of estimating this relationship by itself. However, high IMDB scores do have positive residuals, implying that actual > predicted revenue. Some years have skewed residuals. G movies also have positive residuals.  
+    +  All genres have random relationships with residual. Do not need to include genre. 
+*  Include the variables with non-random residuals (year, IMDB score, content rating) in a step-wise selection process. All included based off of step-wise.  
+*  Look at new residuals of included and excluded relationships. All fairly random.
+*  Look at predictions for each individual variable. Good job even for variables not included in the model.
+    +  Year isn't great again.
+*  Look at predictions overall. Looks good.   
+    
+Not shown here, but I also fit a step wise from absolute scratch. Result was the same four variables plus Comedy and Mystery.   
+Also did step wise where all of the genre variables had to be included together. Got the same four variables and no genre.
+   
+
+```{r mod_simple}
+mod_simple <- lm(real_gross_log ~ real_budget_log, data = train)
+summary(mod_simple)
+rmse(mod_simple, data = valid)
+```
+
+```{r simple_resid, fig.show = 'hide', results = 'hide', warning = F, message = F}
+gr_resid(mod_simple)
+```
+
+Take a quick look at the predictions from this very simple model with just budget. Decent, but was better with more variables.  
+```{r pred_simple}
+train %>% 
+  add_predictions(mod_simple, 'lpred') %>%  
+  mutate(pred = 10^lpred) %>%
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
+  geom_freqpoly(aes(x = pred, color = 'Predicted')) +
+  scale_x_log10() + 
+  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+```
+
+```{r simple_resid_show, results = 'hide', warning = F, message = F}
+train_resid_simple <- train %>% 
+  add_residuals(mod_simple, 'lresid')
+
+gr_con <- function(v, title, xtitle) {
+  lapply(v, function(var) {
+    train_resid_simple %>% 
+      ggplot() + 
+      geom_point(aes_string(str_c(var, '_log'), y = 'lresid')) +
+      geom_hline(aes(yintercept = 0)) + 
+      labs(y = 'Log Residual', title = title, x = xtitle)
+  })
+}
+
+gr_cat <- function(v, title, xtitle, flip = F) {
+  lapply(v, function(var) {
+    gr <- train_resid_simple %>% 
+      filter(!is.na(!!rlang::sym(var))) %>%
+      ggplot() + 
+      geom_jitter(aes_string(var, y = 'lresid'), alpha = .3) + 
+      geom_hline(aes(yintercept = 0)) + 
+      labs(y ='Log Residual', title = title, x = xtitle)
+    if (flip) {
+      gr + coord_flip()
+    } else{
+      gr
+    }
+  })
+}
+
+gr_con('real_budget', 'Log Residual: Random Relationship', 'Log Real Budget')
+gr_con('imdb_score', 'Log Residual: Non-Random Relationship', 'Log IMDB Score')
+gr_cat('content_rating', 'Log Residual: Non-Random Relationship', 'Content Rating')
+gr_cat('year', 'Log Residual: Non-Random Relationship', 'Year', flip = T)
+ 
+gr_cat('Adventure', 'Log Residual: Random Relationship', 'Adventure')
+gr_cat('Action', 'Log Residual: Random Relationship', 'Action')
+```
+
+```{r mod_simple_step}
+# stepwise
+# ALL potentially relevant variables
+rmse_lst <- step_wise_loop(df = train %>% select(real_budget_log, imdb_score_log, year,
+                                                 content_rating))
+
+# graph RMSE vs number of variables
+fit_rmse <- tibble(nvar = 1:length(rmse_lst), 
+                   rmse = rmse_lst)
+ggplot(fit_rmse, aes(x = nvar, y = rmse)) + geom_line() + 
+  scale_x_continuous(breaks = seq(1, length(rmse_lst), by = 1)) +
+  labs(x = 'Number of Variables', y = 'RMSE',
+       title = 'RMSE vs Number of Variables: Include All 4')
+# after var 4, decreases too small or increase 
+
+mod_simple2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating,
+               data = train)
+
+summary(mod_simple2)
+rmse(mod_simple2, data = valid) 
+
+# when consider factors as one variable, they are significant
+anova(mod_simple2)
+
+# number of observations
+nobs(mod_simple2)
+
+# compare with anova to more complex models
+anova(mod_all, mod_simple2)
+# to compare to mod_simple, need some number of observations: filter out missing content rating and then fit
+mod_simple <- lm(real_gross_log ~ real_budget_log, data = train %>% filter(!is.na(content_rating)))
+anova(mod_simple, mod_simple2)
+```
+
+```{r simple_resid2, eval = F}
+gr_resid(mod_simple2)
+```
+
+```{r mod_simple_qq}
+train %>% 
+  add_residuals(mod_simple2,'lresid') %>% 
+  ggplot(aes(sample = lresid)) + 
+    geom_qq() + 
+    geom_qq_line() + 
+    labs(title = 'Residual QQPlot: Deviation at Tails', 
+       x = 'Theoretical Quantiles', y = 'Sample Quantiles') 
+```
+
+```{r pred_mod_simple_individ, fig.show = 'hide', results = 'hide', warning = F, message = F}
+train_pred_simple <- train %>% 
+  add_predictions(mod_simple2, 'lpred') %>%
+  mutate(pred = 10^lpred)
+
+# point because many factors. won't just be a single coefficient determining
+  # SEE BOOK where did prediction based on a bunch of variables 
+lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 'imdb_score'), function(var) {  
+    train_pred_simple %>%
+    ggplot(aes_string(x = var)) + 
+    geom_point(aes(y = real_gross, color = 'Actual')) + 
+    geom_point(aes(y = pred, color = 'Predicted')) + 
+    scale_y_log10() + scale_x_log10()
+})
+
+# predictions against other genres
+lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director', all_genre_vars), function(var) {
+  train_pred_simple %>% 
+    ggplot(aes_string(x = var)) + 
+    geom_boxplot(aes(y = real_gross)) + 
+    # include mean 
+    stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+               aes(y = mean), color = 'red', size = 2) +
+    scale_y_log10() 
+})
+```
+
+```{r pred_mod_simple_individ_show, echo = F, results = 'hide', warning = F, message = F}
+
+# predictions against included variables
+con_gr <- function(v, title) {
+  lapply(c(v), function(var) {  
+      train_pred_simple %>%
+      ggplot(aes_string(x = var)) + 
+      geom_point(aes(y = real_gross, color = 'Actual')) + 
+      geom_point(aes(y = pred, color = 'Predicted')) + 
+      scale_y_log10() + scale_x_log10() + 
+      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction',
+           x = title) + 
+      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  })
+}
+cat_gr <- function(v, title, flip = F) {
+  lapply(v, function(var) {
+    gr <- train_pred_simple %>% 
+      filter(!is.na(!!rlang::sym(var))) %>%
+      ggplot(aes_string(x = var)) + 
+      geom_boxplot(aes(y = real_gross)) + 
+      # include mean 
+      stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+                 aes(y = mean), color = 'red', size = 2) +
+      scale_y_log10() + 
+      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
+           x = title)
+    if (flip) {
+      gr + coord_flip()
+    } else{
+      gr
+    }
+  })
+}
+
+con_gr('real_budget', 'Log Real Budget')
+con_gr('imdb_score', 'Log IMDB Score')
+con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
+
+cat_gr('content_rating', 'Content Rating')
+cat_gr('year', 'Year', flip = T)
+cat_gr('Animation', 'Animation')
+cat_gr('Adventure', 'Adventure')
+cat_gr('Documentary', 'Documentary')
+
+```
+
+```{r pred_mod_simple}
+train %>% 
+  add_predictions(mod_simple2, 'lpred') %>%  
+  mutate(pred = 10^lpred) %>%
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
+  geom_freqpoly(aes(x = pred, color = 'Predicted')) +
+  scale_x_log10() + 
+  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+```
+
+# Compare Models
+*  Somewhat of a toss-up between model without genre and model with some genre variables. Predictions similar, random relationships with resiudals.
+  *  Histogram of actual vs predicted revenue is, if anything, more similar for the no genre model.
+*  Very similar RMSE (.621 vs .623) and R-squared (.48 vs .46)
+*  Anova shows that the more complex genre model is significantly different from the simpler model without genre. 
+*  However, given that the predictions etc. are so similar, it is better to go with the simpler model. Worry about over-fitting with the genre model. Especially because some of the genres don't have that many observations. 
+*  Main take away is that budget has the strongest, most significant relationship with revenue. The model with just budget had a RMSE that was only slightly higher (.65 vs .62) and an R-squared that was only slightly lower (.45 vs .46) than the models with more variables. Also, the other variables that we add to the model had fairly close to random relationships with the residuals from the model with just budget. 
+  +  However, predicted vs actual histogram of real gross shows that it is not perfect. Model with the three extra variables does a better job predicting. 
+
+# Fit Final Model on the Test Set
+
+*  Similar results. Predictions are occasionally a bit off, but by in large on track. Variables have random relationship with residuals.  
+*  Year becomes insignificant (or significant at a low level) in anova
+*  Only two NC-17 movies in test set
+
+```{r mod_test}
+mod_simple2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating,
+               data = test)
+
+summary(mod_simple2)
+anova(mod_simple2)
+rmse(mod_simple2, data = test) 
+```
+
+```{r simple_resid_test, eval = F}
+gr_resid(mod_simple2, df = test)
+```
+
+```{r mod_simple_qq_test}
+test %>% 
+  add_residuals(mod_simple2,'lresid') %>% 
+  ggplot(aes(sample = lresid)) + 
+    geom_qq() + 
+    geom_qq_line() + 
+    labs(title = 'Residual QQPlot: Deviation at Tails', 
+       x = 'Theoretical Quantiles', y = 'Sample Quantiles') 
+```
+
+```{r pred_mod_simple_individ_test, fig.show = 'hide', results = 'hide', warning = F, message = F}
+test_pred <- test %>% 
+  add_predictions(mod_simple2, 'lpred') %>%
+  mutate(pred = 10^lpred)
+
+# point because many factors. won't just be a single coefficient determining
+  # SEE BOOK where did prediction based on a bunch of variables 
+lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 'imdb_score'), function(var) {  
+    test_pred %>%
+    ggplot(aes_string(x = var)) + 
+    geom_point(aes(y = real_gross, color = 'Actual')) + 
+    geom_point(aes(y = pred, color = 'Predicted')) + 
+    scale_y_log10() + scale_x_log10()
+})
+
+# predictions against other genres
+lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director', all_genre_vars), function(var) {
+  test_pred %>% 
+    ggplot(aes_string(x = var)) + 
+    geom_boxplot(aes(y = real_gross)) + 
+    # include mean 
+    stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+               aes(y = mean), color = 'red', size = 2) +
+    scale_y_log10() 
+})
+```
+```{r pred_mod_simple_individ_show_test, echo = F, results = 'hide', warning = F, message = F}
+
+# predictions against included variables
+con_gr <- function(v, title) {
+  lapply(c(v), function(var) {  
+      test_pred %>%
+      ggplot(aes_string(x = var)) + 
+      geom_point(aes(y = real_gross, color = 'Actual')) + 
+      geom_point(aes(y = pred, color = 'Predicted')) + 
+      scale_y_log10() + scale_x_log10() + 
+      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction',
+           x = title) + 
+      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  })
+}
+cat_gr <- function(v, title, flip = F) {
+  lapply(v, function(var) {
+    gr <- test_pred %>% 
+      filter(!is.na(!!rlang::sym(var))) %>%
+      ggplot(aes_string(x = var)) + 
+      geom_boxplot(aes(y = real_gross)) + 
+      # include mean 
+      stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+                 aes(y = mean), color = 'red', size = 2) +
+      scale_y_log10() + 
+      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
+           x = title)
+    if (flip) {
+      gr + coord_flip()
+    } else{
+      gr
+    }
+  })
+}
+
+con_gr('real_budget', 'Log Real Budget')
+con_gr('imdb_score', 'Log IMDB Score')
+con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
+
+cat_gr('content_rating', 'Content Rating')
+cat_gr('year', 'Year', flip = T)
+cat_gr('Animation', 'Animation')
+cat_gr('Adventure', 'Adventure')
+cat_gr('Documentary', 'Documentary')
+
+```
+
+```{r pred_simple_test}
+test %>% 
+  add_predictions(mod_simple2, 'lpred') %>%  
+  mutate(pred = 10^lpred) %>%
+  ggplot() +
+  geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
+  geom_freqpoly(aes(x = pred, color = 'Predicted')) +
+  scale_x_log10() + 
+  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+```
 TO DO: 
-*  Plot individual predictions for individual variables for mod_all
-*  Add in mod_all2 for starting without genre
-*  Write up justification for not including genre in final model
-*  Fit model on test set (exlucde early years, log variables)
+   
+*  More notes about interpretation of model, why various relationships make sense with residual. 
 *  At the end, create those two labeled graphs with the two major outliers in residuals. 
 *  Put model results into a table (LaTeX?)
+*  Add manual legends to boxplot prediction: black vs red dot 
