@@ -38,8 +38,7 @@ train <- train %>%
 ## Oscars 
 
 Graph number of Oscars for actors and directors against real revenue. Boxplot and bar plot (average revenue)
-_Both are linear but very weak. Unclear if should include in model_
-
+_Maybe_ linear relationships. Unclear.  
 ```{r graph_oscarnum}
 # Versions of data with average revenue by number of oscars 
 train_oscar_actor <- train %>%
@@ -87,7 +86,7 @@ oscar_bar(train_oscar_director, 'total_oscars_director', 'Total # Oscars of Dire
 ## Facebook Likes
 Graph total cast facebook likes and director facebook likes vs real gross revenue. Continuous, so scatter plot. Trying log versions too.  
   
-Not as strong a relationship as I originally expected. Not sure this is worth including either.
+Nothing is very linear. 
 
 ```{r facebook}
 facebook_plot <- function(xvar, xlab) {
@@ -113,13 +112,25 @@ facebook_plot('cast_total_facebook_likes', 'Total Cast Facebook Likes')
 facebook_plot('director_facebook_likes', 'Director Facebook Likes')
 
 ```
+Try squaring as well...still not linear
+
+```{r}
+train %>% ggplot(aes(cast_total_facebook_likes^2, y = real_gross)) +
+  geom_point() + 
+  geom_smooth() + 
+  coord_cartesian(xlim = c(0, 20000000000))
+train %>% ggplot(aes(director_facebook_likes^2, y = real_gross)) +
+  geom_point() + 
+  geom_smooth() +
+  coord_cartesian(xlim = c(0, 1000000))
+```
 
 ## Year 
 
 Average real revenue vs year  
 Adeed APPROXIMATE recession shading. Annual data, so hard to do.  
-Real revenue increase during recessions, but then decreases as recession worsens? (have seen this before with Great Depression - numerous articles we can reference)  
-Regardless, clear that year could have an effect
+Real revenue increase during recessions, but then decreases as recession worsens? (have seen this before with Great Depression - numerous articles we can reference)     
+Some differences between years based on boxplots.
 
 ```{r year}
 # take average of revenue per year: how does revenue evolve over time? 
@@ -144,7 +155,10 @@ ggplot(data = train_sum %>% filter(as.integer(as.character(year)) >= 1995)) +
 # now treat year as a factor and create box plots and average bar plots using log transformations
 train_year <- train %>%
   filter(as.integer(as.character(year)) >= 1995) %>%
-  mutate(year = reorder(year, real_gross)) 
+  group_by(year) %>%
+  mutate(real_gross_avg = mean(real_gross)) %>%
+  ungroup(year) %>%
+  mutate(year = reorder(year, real_gross_avg))
 
 # box plot
 plt_base <- train_year %>% 
@@ -154,15 +168,14 @@ plt_base <- train_year %>%
   coord_flip()
 plt_base + 
   labs(x = 'Year', y = 'Real Gross Revenue ($)',
-       title = 'Year vs Real Gross Revenue in Order')
+       title = 'Year vs Real Gross Revenue in Order by Mean Revenue')
 plt_base +
    labs(x = 'Year', y = 'Log Real Gross Revenue ($)',
-       title = 'Year vs Log Real Gross Revenue') + 
+       title = 'Year vs Log Real Gross Revenue by Mean Revenue') + 
   scale_y_log10()
 
 # bar plot
 train_year %>%
-  # average revenue by content rating
   group_by(year) %>%
   summarize(avg_real_gross = mean(real_gross)) %>%
   ggplot() +
@@ -175,7 +188,6 @@ train_year %>%
 # would like to use scale_y_log10() but can't since mean
 train_year %>%
   mutate(year = reorder(year, real_gross_log)) %>%
-  # average revenue by content rating
   group_by(year) %>%
   summarize(avg_real_gross_log = mean(real_gross_log)) %>%
   ggplot() +
@@ -267,7 +279,7 @@ lapply(unique(train_content$content_rating), function(r) {
 
 ## Genre 
 Bar graph of genre vs real revenue. Try boxplot and bar graph against average real revenue.  
-_Fairly linear relationship. Good candidate to include in model._
+_Fairly clear differences in relationship with revenue by genre. Good candidate to include in model._
 
 ```{r genre}
 # untidy the genre data such that one obseration is spread across many rows. Easier to graph
