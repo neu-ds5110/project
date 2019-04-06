@@ -17,6 +17,9 @@ library(lubridate)
 library(modelr)
 library(tis)
 library(glmnet)
+library(stargazer)
+library(Hmisc)
+library(ggrepel)
 ```
 
 ## Load cleaned data
@@ -25,7 +28,7 @@ library(glmnet)
 load(file = '~/DS5110/data/proj_cleaned_dta.RData')
 ```
 
-```{r drop_years}
+```{r clean}
 # need to drop years before 1980: too sparse
   # most of those years have 1 or 0 observations. If including year in the model, we aren't getting any information from those and it makes it impossible to fit on both train and valid because the levels of the factor are different
 # only necessary when including year in model, but hard to compare different models then b/c data different sizes
@@ -43,6 +46,25 @@ valid <- valid %>%
 test <- test %>%
   mutate_at(vars('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
          'imdb_score', 'real_gross'), funs(log = log10(.)))
+
+# label variables for graphing
+label(train$real_budget) <- 'Real Budget ($)'
+label(train$real_gross) <- 'Real Gross Revenue ($)'
+label(train$real_budget_log) <- 'Log Real Budget ($)'
+label(train$real_gross_log) <- 'Log Real Gross Revenue ($)'
+label(train$imdb_score) <- 'IMDB Score'
+label(train$imdb_score_log) <- 'Log IMDB Score'
+label(train$content_rating) <- 'Content Rating'
+label(train$year) <- 'Year'
+
+label(test$real_budget) <- 'Real Budget ($)'
+label(test$real_gross) <- 'Real Gross Revenue ($)'
+label(test$real_budget_log) <- 'Log Real Budget ($)'
+label(test$real_gross_log) <- 'Log Real Gross Revenue ($)'
+label(test$imdb_score) <- 'IMDB Score'
+label(test$imdb_score_log) <- 'Log IMDB Score'
+label(test$content_rating) <- 'Content Rating'
+label(test$year) <- 'Year'
 ```
 
 
@@ -129,7 +151,8 @@ gr_resid <- function(mod, df = train) {
            'imdb_score'), function(var) {
     print(df_resid %>% 
       ggplot() + 
-      geom_point(aes_string(str_c(var, '_log'), y = 'lresid')))
+      geom_point(aes_string(str_c(var, '_log'), y = 'lresid'))) + 
+      labs(x = label(df_resid[var]))
   })
   
   # categorical 
@@ -138,7 +161,8 @@ gr_resid <- function(mod, df = train) {
     print(df_resid %>%
       filter(!is.na(!!rlang::sym(var))) %>%
       ggplot() + 
-      geom_jitter(aes_string(var, 'lresid'), alpha = .3))
+      geom_jitter(aes_string(var, 'lresid'), alpha = .3)) +
+      labs(x = label(df_resid[var]))
   })
 
 }
@@ -268,12 +292,12 @@ train_pred <- train %>%
   mutate(pred = 10^lpred)
 
 lapply(genre_xvar, function(var) {
-  gr <- train_pred %>% 
+  train_pred %>% 
     ggplot(aes_string(x = var)) + 
     geom_boxplot(aes(y = real_gross)) + 
     # include mean
     stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() + 
     labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction') 
@@ -286,7 +310,7 @@ lapply(names(train_genre_only %>% select(-genre_xvar)), function(var) {
     geom_boxplot(aes(y = real_gross)) + 
     # include mean 
     stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() + 
     labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction Even With Genres Not Included')
@@ -299,15 +323,16 @@ train_pred <- train %>%
   mutate(pred = 10^lpred)
 
 lapply(c('Adventure', 'Documentary'), function(var) {
-  gr <- train_pred %>% 
+  train_pred %>% 
     ggplot(aes_string(x = var)) + 
     geom_boxplot(aes(y = real_gross)) + 
     # include mean
-    stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
-               aes(y = mean), color = 'red', size = 2) +
+    stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
+               aes(y = mean, color = 'Predicted'), size = 2) +
     scale_y_log10() + 
-    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction') 
+    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction') +
+    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
 })
 
 # predictions against other genres
@@ -317,11 +342,12 @@ lapply(c('Animation', 'Western'), function(var) {
     ggplot(aes_string(x = var)) + 
     geom_boxplot(aes(y = real_gross)) + 
     # include mean 
-    stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
-               aes(y = mean), color = 'red', size = 2) +
+    stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
+               aes(y = mean, color = 'Predicted'), size = 2) +
     scale_y_log10() + 
-    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction Even With Genres Not Included')
+    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction Even With Genres Not Included') +
+    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
 })
 ```
 
@@ -403,11 +429,12 @@ train_resid <- train %>%
   add_residuals(mod_genre, 'lresid')
 
 # graph each against log residual: continuous (log scale)
-lapply(c('real_budget', 'imdb_score'), function(var) {
+lapply(c('real_budget_log', 'imdb_score_log'), function(var) {
   train_resid %>% 
     ggplot() + 
-    geom_point(aes_string(str_c(var, '_log'), y = 'lresid')) + 
-    geom_hline(aes(yintercept = 0)) 
+    geom_point(aes_string(var, y = 'lresid')) + 
+    geom_hline(aes(yintercept = 0)) +
+    labs(x = label(train_resid[var]), y = 'Log Residual')
 })
 
 ```
@@ -431,6 +458,7 @@ rmse_lst <- step_wise_loop(df = train %>% select(genre_xvar, content_rating, rea
                            starting_vars = genre_xvar, 
                            starting_formula = starting_formula)
 ```
+
 ```{r other_step_gr}
 # graph RMSE vs number of variables
 fit_rmse <- tibble(nvar = 1:length(rmse_lst), 
@@ -504,11 +532,12 @@ lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director'
     geom_boxplot(aes(y = real_gross)) + 
     # include mean 
     stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() 
 })
 ```
+
 ```{r pred_mod_all_individ_show, echo = F, results = 'hide', warning = F, message = F}
 
 # predictions against included variables
@@ -532,7 +561,7 @@ cat_gr <- function(v, title, flip = F) {
       geom_boxplot(aes(y = real_gross)) + 
       # include mean 
       stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                  aes(y = mean), color = 'red', size = 2) +
       scale_y_log10() + 
       labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
@@ -684,6 +713,37 @@ anova(mod_simple, mod_simple2)
 gr_resid(mod_simple2)
 ```
 
+```{r two_R_outliers}
+label <- train %>% 
+  add_residuals(mod_simple2, 'lresid') %>%
+  filter(lresid > 2.5)
+
+train_resid <- train %>% 
+    add_residuals(mod_simple2, 'lresid')
+
+lapply(c('content_rating'), function(var) {
+  train_resid %>%
+    filter(!is.na(!!rlang::sym(var))) %>%
+    filter(lresid < 2.5) %>%
+    ggplot(aes_string(var, 'lresid')) + 
+    geom_jitter(alpha = .3) + 
+    geom_point(data = train_resid %>% filter(lresid > 2.5), color = 'red') +
+    geom_text_repel(aes(label = movie_title), data = label, nudge_x = -.6, segment.color = NA) +
+    labs(x = label(train_resid[var]))
+}) 
+
+lapply(c('real_budget', 'imdb_score'), function(var) {
+  train_resid %>% 
+    filter(lresid < 2.5) %>%
+    ggplot(aes_string(str_c(var, '_log'), y = 'lresid')) + 
+    geom_point() +
+    geom_point(data = train_resid %>% filter(lresid > 2.5), color = 'red') +
+    geom_text_repel(aes(label = movie_title), data = label, segment.color = NA) +
+    labs(x = label(train_resid[var]))
+})
+
+```
+
 ```{r mod_simple_qq}
 train %>% 
   add_residuals(mod_simple2,'lresid') %>% 
@@ -716,7 +776,7 @@ lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director'
     geom_boxplot(aes(y = real_gross)) + 
     # include mean 
     stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() 
 })
@@ -744,12 +804,13 @@ cat_gr <- function(v, title, flip = F) {
       ggplot(aes_string(x = var)) + 
       geom_boxplot(aes(y = real_gross)) + 
       # include mean 
-      stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
-                 aes(y = mean), color = 'red', size = 2) +
+      stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
+                 aes(y = mean, color = 'Predicted'), size = 2) +
       scale_y_log10() + 
       labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
-           x = title)
+           x = title) +
+    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
     if (flip) {
       gr + coord_flip()
     } else{
@@ -785,6 +846,8 @@ train %>%
 # Compare Models
 *  Somewhat of a toss-up between model without genre and model with some genre variables. Predictions similar, random relationships with resiudals.
   *  Histogram of actual vs predicted revenue is, if anything, more similar for the no genre model.
+  *  Genres are captured by other variables: for example, genre and budget vary together significantly, as well as genre and content rating, so those effects are captured. If I was a movie executive, picking genre is still tied up in this because that likely effects the budget and content rating, which are significant and strong predictors. 
+      *  See graphs at end of EDA: compare genre and budget and content rating. For budget, ranking of genre almost identical to ranking based off of revenue
 *  Very similar RMSE (.621 vs .623) and R-squared (.48 vs .46)
 *  Anova shows that the more complex genre model is significantly different from the simpler model without genre. 
 *  However, given that the predictions etc. are so similar, it is better to go with the simpler model. Worry about over-fitting with the genre model. Especially because some of the genres don't have that many observations. 
@@ -798,12 +861,28 @@ train %>%
 *  Only two NC-17 movies in test set
 
 ```{r mod_test}
-mod_simple2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + year + content_rating,
+mod_simple2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + content_rating + year,
                data = test)
 
 summary(mod_simple2)
 anova(mod_simple2)
 rmse(mod_simple2, data = test) 
+```
+
+```{r output}
+stargazer(mod_simple2, type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', title = 'Final Model Summary',
+          omit = c('1981', '1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
+          '1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
+          '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016'),
+          covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R'),
+          notes = 'Year dummies omitted for presentation purposes', notes.align = 'l', column.sep.width = "-1pt") 
+
+          
+          # covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R', '1981', 
+          #'1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
+          #'1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
+          #'2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', 'Constant'))
 ```
 
 ```{r simple_resid_test, eval = F}
@@ -842,11 +921,12 @@ lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director'
     geom_boxplot(aes(y = real_gross)) + 
     # include mean 
     stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
+    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() 
 })
 ```
+
 ```{r pred_mod_simple_individ_show_test, echo = F, results = 'hide', warning = F, message = F}
 
 # predictions against included variables
@@ -869,12 +949,13 @@ cat_gr <- function(v, title, flip = F) {
       ggplot(aes_string(x = var)) + 
       geom_boxplot(aes(y = real_gross)) + 
       # include mean 
-      stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarize(mean = mean(pred)),
-                 aes(y = mean), color = 'red', size = 2) +
+      stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
+                 aes(y = mean, color = 'Predicted'), size = 2) +
       scale_y_log10() + 
       labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
-           x = title)
+           x = title) + 
+    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
     if (flip) {
       gr + coord_flip()
     } else{
@@ -906,9 +987,4 @@ test %>%
   labs(x = 'Log Real Gross Revenue', y = 'Count') + 
   scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
 ```
-TO DO: 
-   
-*  More notes about interpretation of model, why various relationships make sense with residual. 
-*  At the end, create those two labeled graphs with the two major outliers in residuals. 
-*  Put model results into a table (LaTeX?)
-*  Add manual legends to boxplot prediction: black vs red dot 
+
