@@ -43,11 +43,11 @@ _Maybe_ linear relationships. Unclear.
 # Versions of data with average revenue by number of oscars 
 train_oscar_actor <- train %>%
   group_by(total_oscars_actor) %>% 
-  summarize(avg_real_gross = mean(real_gross),
+  summarise(avg_real_gross = mean(real_gross),
             avg_real_gross_log = mean(real_gross_log))
 train_oscar_director <- train %>%
   group_by(total_oscars_director) %>% 
-  summarize(avg_real_gross = mean(real_gross),
+  summarise(avg_real_gross = mean(real_gross),
             avg_real_gross_log = mean(real_gross_log))
 
 # Functions to graph number of Oscars held by actors in 1movie vs. real revenue 
@@ -136,7 +136,7 @@ Some differences between years based on boxplots.
 # take average of revenue per year: how does revenue evolve over time? 
 train_sum <- train %>%
   group_by(year) %>%
-  summarize(real_gross_avg = mean(real_gross))
+  summarise(real_gross_avg = mean(real_gross))
 
 # need to limit because before 1995 there are very few observations per year (< 10 usually). 
 # this causes large spikes because one high earning or low earning movie influences the average heavily
@@ -177,7 +177,7 @@ plt_base +
 # bar plot
 train_year %>%
   group_by(year) %>%
-  summarize(avg_real_gross = mean(real_gross)) %>%
+  summarise(avg_real_gross = mean(real_gross)) %>%
   ggplot() +
   geom_col(aes(x = year, y = avg_real_gross, fill = year)) +
   labs(x = 'Year', y = 'Average Real Gross Revenue ($)',
@@ -189,7 +189,7 @@ train_year %>%
 train_year %>%
   mutate(year = reorder(year, real_gross_log)) %>%
   group_by(year) %>%
-  summarize(avg_real_gross_log = mean(real_gross_log)) %>%
+  summarise(avg_real_gross_log = mean(real_gross_log)) %>%
   ggplot() +
   geom_col(aes(x = year, y = avg_real_gross_log, fill = year)) +
   labs(x = 'Year', y = 'Average Log Real Gross Revenue (Log $)',
@@ -230,7 +230,7 @@ plt_base +
 train_content %>%
   # average revenue by content rating
   group_by(content_rating) %>%
-  summarize(avg_real_gross = mean(real_gross)) %>%
+  summarise(avg_real_gross = mean(real_gross)) %>%
   ggplot() +
   geom_col(aes(x = content_rating, y = avg_real_gross, fill = content_rating)) +
   labs(x = 'Content Rating', y = 'Average Real Gross Revenue ($)',
@@ -241,7 +241,7 @@ train_content %>%
 train_content %>%
   # average revenue by content rating
   group_by(content_rating) %>%
-  summarize(avg_real_gross_log = mean(real_gross_log)) %>%
+  summarise(avg_real_gross_log = mean(real_gross_log)) %>%
   ggplot() +
   geom_col(aes(x = content_rating, y = avg_real_gross_log, fill = content_rating)) +
   labs(x = 'Content Rating', y = 'Average Log Real Gross Revenue (Log $)',
@@ -256,7 +256,7 @@ lapply(unique(train_content$content_rating), function(r) {
     mutate(rating_dum = as.factor(ifelse(content_rating == r, 1, 0))) %>%
     # mean revenue for 0 vs 1 for that content rating
     group_by(rating_dum) %>%
-    summarize(avg_real_gross = mean(real_gross)) %>%
+    summarise(avg_real_gross = mean(real_gross)) %>%
     ggplot() + 
     geom_col(aes(x = rating_dum, y = avg_real_gross)) + 
     labs(x = r, y = 'Average Real Gross Revenue ($)')
@@ -268,7 +268,7 @@ lapply(unique(train_content$content_rating), function(r) {
     mutate(rating_dum = as.factor(ifelse(content_rating == r, 1, 0))) %>%
     # mean revenue for 0 vs 1 for that content rating
     group_by(rating_dum) %>%
-    summarize(avg_real_gross_log = mean(real_gross_log)) %>%
+    summarise(avg_real_gross_log = mean(real_gross_log)) %>%
     ggplot() + 
     geom_col(aes(x = rating_dum, y = avg_real_gross_log)) +
     labs(x = r, y = 'Average Log Real Gross Revenue (Log $)')
@@ -314,7 +314,7 @@ plt_base +
 train_genre %>% 
   # average by genre
   group_by(genre) %>%
-  summarize(avg_real_gross = mean(real_gross)) %>%
+  summarise(avg_real_gross = mean(real_gross)) %>%
   # graph
   ggplot() + 
   geom_col(aes(x = genre, y = avg_real_gross, fill = genre)) + 
@@ -328,7 +328,7 @@ train_genre %>%
   mutate(genre = reorder(genre, real_gross_log)) %>%
   # average by genre
   group_by(genre) %>%
-  summarize(avg_real_gross_log = mean(real_gross_log)) %>%
+  summarise(avg_real_gross_log = mean(real_gross_log)) %>%
   # graph
   ggplot() + 
   geom_col(aes(x = genre, y = avg_real_gross_log, fill = genre)) + 
@@ -338,5 +338,31 @@ train_genre %>%
   theme(legend.position = 'none')
 
 
+#### genre against budget: 
+# using this as a partial justification for why genre isn't in the final model
+train_genre %>%
+  mutate(genre = reorder(genre, real_budget)) %>%
+  ggplot() + 
+  geom_boxplot(aes(x = genre, y = real_budget, fill = genre)) + 
+  coord_flip() +  
+  theme(legend.position = 'none') + 
+  labs(x = 'Genre', y = 'Real Gross Budget ($)',
+       title = 'Genre vs Real Gross Budget') 
+
+#### genre against content rating: 
+# using this as a partial justification for why genre isn't in the final model
+# proportion of movies within each content rating that are each genre
+train_genre_content <- train_genre %>% 
+  group_by(genre, content_rating) %>%
+  count() %>%
+  group_by(content_rating) %>%
+  mutate(prop = n / sum(n))
+train_genre_content %>%
+  filter(!is.na(content_rating)) %>%
+  ggplot() + 
+  geom_count(aes(x = genre, y = content_rating, size = prop)) + 
+  coord_flip() + 
+  theme(legend.position = 'none') + 
+  labs(x = 'Genre', y = 'Content Rating', title = 'Proportion of Movies of Each Genre By Content Rating')
 ```
 
