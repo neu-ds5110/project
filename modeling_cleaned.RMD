@@ -374,7 +374,7 @@ train %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted: Not Complete') + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Log Real Revenue Actual vs Predicted: Not Complete') + 
   scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
@@ -423,8 +423,8 @@ lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes',
          'imdb_score'), function(var) {
   train_resid %>% 
     ggplot() +  
-    geom_point(aes_string(str_c(var, '_log'), y = 'lresid')) + 
-    labs('Low Budget Movies Over-Predicted; High Budget Under-Predicted')
+    geom_point(aes_string(str_c(var, '_log'), y = 'lresid'))
+    #labs('Low Budget Movies Over-Predicted; High Budget Under-Predicted')
 })
 
 # categorical 
@@ -447,8 +447,8 @@ lapply(c('real_budget', 'imdb_score'), function(var) {
     ggplot() + 
     geom_point(aes_string(var, y = 'lresid')) + 
     geom_hline(aes(yintercept = 0)) +
-    labs(x = label(train_resid[str_c(var, '_log', sep = '')]), y = 'Log Residual') +
-    scale_x_log10()
+    labs(x = label(train_resid[str_c(var, '_log', sep = '')]), y = 'Log Residual', title = 'Low Budget Movies Over-Predicted; High Budget Under-Predicted') +
+    scale_x_log10() 
 })
 ```
 
@@ -646,7 +646,7 @@ train %>%
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
   theme(legend.position="bottom") + 
-  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted') + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Log Real Revenue Actual vs Predicted') + 
   scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
@@ -687,7 +687,7 @@ train %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted: Budget Only') + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Log Real Revenue Actual vs Predicted: Budget Only') + 
   scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
@@ -898,7 +898,7 @@ train %>%
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
   theme(legend.position="bottom") + 
-  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted') + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Log Real Revenue Actual vs Predicted') + 
   scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
@@ -1018,7 +1018,7 @@ con_gr <- function(v, title) {
       geom_point(aes(y = real_gross, color = 'Actual')) + 
       geom_point(aes(y = pred, color = 'Predicted')) + 
       scale_y_log10() + scale_x_log10() + 
-      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\n Successful Prediction',
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\nSuccessful Prediction',
            x = title) + 
       scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red')) 
   })
@@ -1034,7 +1034,7 @@ cat_gr <- function(v, title, flip = F) {
       geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                  aes(y = mean, color = 'Predicted Mean'), size = 2) +
       scale_y_log10() + 
-      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\n Successful Prediction', 
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\nSuccessful Prediction', 
            x = title) + 
     scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black'))
     if (flip) {
@@ -1066,7 +1066,7 @@ test %>%
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
   theme(legend.position="bottom") + 
-  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Real vs Predicted') + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Log Real Revenue Real vs Predicted') + 
   scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
