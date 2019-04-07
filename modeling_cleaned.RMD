@@ -22,6 +22,11 @@ library(Hmisc)
 library(ggrepel)
 ```
 
+```{r}
+pdf('~/DS5110/project/output/model_plots.pdf')
+
+```
+
 ## Load cleaned data
 
 ```{r load}
@@ -218,6 +223,13 @@ rmse(mod_genre10, data = valid)
 genre_xvar <- c('Adventure', 'Action', 'Family', 'Mystery',
                 'Documentary', 'Drama', 'History', 'Romance')
 ```
+
+```{r genre_output}
+stargazer(mod_genre, type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/genre_mod.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', title = 'Genre Model Summary \\\\ Response Variable: Log Real Gross Revenue',
+          covariate.labels = c('Adventure', 'Action', 'Family', 'Mystery', 'Romance', 'Drama', 'History', 'Documentary'),
+          notes.align = 'l', column.sep.width = "-1pt") 
+```
     
 This model selection by and large makes sense. All included variables are significant at some level.  
 However, according to Qiang's graphs in EDA, some of the included genres do not make a real difference to real_gross. Especially History. Also, some genres that look like they would make a signficant difference are not included. For example, Animation.
@@ -274,11 +286,11 @@ Not great.
 
 ```{r qq}
 # residuals themselves are NOT normally distributed 
-# qq plot 
+# qq plot s
 train_resid %>% ggplot(aes(sample = lresid)) + 
   geom_qq() +
   geom_qq_line() + 
-  labs(title = 'Residual QQPlot: deviations at tails', 
+  labs(title = 'Residual QQPlot: Significant deviations at tails', 
        x = 'Theoretical Quantiles', y = 'Sample Quantiles') 
 ```
 
@@ -300,7 +312,7 @@ lapply(genre_xvar, function(var) {
     geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() + 
-    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction') 
+    labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\n Successful Prediction') 
 })
 
 # predictions against other genres
@@ -313,10 +325,10 @@ lapply(names(train_genre_only %>% select(-genre_xvar)), function(var) {
     geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
                aes(y = mean), color = 'red', size = 2) +
     scale_y_log10() + 
-    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction Even With Genres Not Included')
+    labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction Even With Genres Not Included')
 })
 ```
-Display a couple of plots for presentation. In slides, report: note about black dot is true mean, red dot is predicted 
+Display a couple of plots for presentation. 
 ```{r pred_genre_show, echo = F, results = 'hide', warning = F, message = F}
 train_pred <- train %>% 
   add_predictions(mod_genre, 'lpred') %>%
@@ -327,12 +339,12 @@ lapply(c('Adventure', 'Documentary'), function(var) {
     ggplot(aes_string(x = var)) + 
     geom_boxplot(aes(y = real_gross)) + 
     # include mean
-    stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+    stat_summary(aes(y = real_gross, color = 'Actual Mean'), fun.y = mean, geom = 'point', size = 4) +
     geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-               aes(y = mean, color = 'Predicted'), size = 2) +
+               aes(y = mean, color = 'Predicted Mean'), size = 2) +
     scale_y_log10() + 
-    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction') +
-    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
+    labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction') +
+    scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black'))
 })
 
 # predictions against other genres
@@ -342,12 +354,12 @@ lapply(c('Animation', 'Western'), function(var) {
     ggplot(aes_string(x = var)) + 
     geom_boxplot(aes(y = real_gross)) + 
     # include mean 
-    stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+    stat_summary(aes(y = real_gross, color = 'Actual Mean'), fun.y = mean, geom = 'point', size = 4) +
     geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-               aes(y = mean, color = 'Predicted'), size = 2) +
+               aes(y = mean, color = 'Predicted Mean'), size = 2) +
     scale_y_log10() + 
-    labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction Even With Genres Not Included') +
-    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
+    labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction Even With Genres Not Included') +
+    scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black'))
 })
 ```
 
@@ -362,8 +374,8 @@ train %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
-  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted: Not Complete') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
 ## Glmnet: sparse 
@@ -410,8 +422,9 @@ train_resid <- train %>%
 lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 
          'imdb_score'), function(var) {
   train_resid %>% 
-    ggplot() + 
-    geom_point(aes_string(str_c(var, '_log'), y = 'lresid'))
+    ggplot() +  
+    geom_point(aes_string(str_c(var, '_log'), y = 'lresid')) + 
+    labs('Low Budget Movies Over-Predicted; High Budget Under-Predicted')
 })
 
 # categorical 
@@ -429,14 +442,14 @@ train_resid <- train %>%
   add_residuals(mod_genre, 'lresid')
 
 # graph each against log residual: continuous (log scale)
-lapply(c('real_budget_log', 'imdb_score_log'), function(var) {
+lapply(c('real_budget', 'imdb_score'), function(var) {
   train_resid %>% 
     ggplot() + 
     geom_point(aes_string(var, y = 'lresid')) + 
     geom_hline(aes(yintercept = 0)) +
-    labs(x = label(train_resid[var]), y = 'Log Residual')
+    labs(x = label(train_resid[str_c(var, '_log', sep = '')]), y = 'Log Residual') +
+    scale_x_log10()
 })
-
 ```
 
 ```{r other_step, results = 'hide', message = F}
@@ -472,8 +485,8 @@ ggplot(fit_rmse, aes(x = nvar, y = rmse)) + geom_line() +
 
 # model with extra 4 variables
 mod_all <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
-                  Documentary + Drama + History + Romance + 
-                  real_budget_log + imdb_score_log + year + content_rating, 
+                  Documentary + Drama + History + Romance  + 
+                  real_budget_log + imdb_score_log + content_rating + year, 
           data = train)
 
 summary(mod_all)
@@ -486,18 +499,56 @@ anova(mod_all)
 nobs(mod_all)
 ```
 
+```{r mod_all_output}
+stargazer(mod_all, type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/all_mod.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
+          title = 'Extended Genre Model Summary \\\\ Response Variable: Log Real Gross Revenue',
+          omit = c('1981', '1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
+          '1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
+          '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016'),
+          covariate.labels = c('Adventure', 'Action', 'Family', 'Mystery', 'Documentary', 'Drama', 'History', 'Romance', 
+                               'Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R'),
+          notes = 'Year dummies omitted', notes.align = 'l', column.sep.width = "-1pt") 
+```
+
+
+```{r mod_all_output_anova}
+train_labels <- train %>%
+  rename(`Log Real Budget ($)` = real_budget_log, 
+         `Content Rating` = content_rating,
+         `Log IMDB Score` = imdb_score_log,
+         Year = year)
+mod_all_labels <- lm(real_gross_log ~ Adventure + Action + Family + Mystery + 
+                  Documentary + Drama + History + Romance  + 
+                  `Log Real Budget ($)` + `Log IMDB Score` + `Content Rating` + Year, 
+          data = train_labels)
+stargazer(anova(mod_all_labels), type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/all_mod_anova.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
+          title = 'Extended Genre Model Anova \\\\ Response Variable: Log Real Gross Revenue', summary = F)
+```
+
 ```{r mod_all_resid, fig.show = 'hide', results = 'hide', warning = F, message = F}
 gr_resid(mod_all)
+```
 
-# two points with consistently really high residuals (greater than 2) i.e. based on all of their factors, they should've made less money than they did: Blair Witch Project and Paranormal Activity. R movies low revenue and low budget. 
-  ### make a graph labeling these and pointing out
-# often many points with large negative results less than -2: often get movies that are a flop. High budget etc., but people just don't like them 
-train %>% 
-  add_residuals(mod_all, 'lresid') %>%
-  filter(lresid > 2.1)
-train %>% 
-  add_residuals(mod_all, 'lresid') %>%
-  filter(lresid < -2)
+```{r mod_all_resid_show, echo = F, results = 'hide', warning = F, message = F}
+train_resid_all <- train %>% 
+  add_residuals(mod_all, 'lresid')
+
+# labels aren't persisting for some reason  - make sure 
+label(train_resid_all$real_budget_log) <- 'Log Real Budget ($)'
+label(train_resid_all$imdb_score_log) <- 'Log IMDB Score'
+
+
+# graph each against log residual: continuous (log scale)
+lapply(c('real_budget', 'imdb_score'), function(var) {
+  train_resid_all %>% 
+    ggplot() + 
+    geom_point(aes_string(var, y = 'lresid')) + 
+    geom_hline(aes(yintercept = 0)) +
+    labs(x = label(train_resid_all[str_c(var, '_log', sep = '')]), y = 'Log Residual') +
+    scale_x_log10() + labs(title = 'Random Relationship')
+})
 ```
 
 ```{r mod_all_qq}
@@ -548,9 +599,10 @@ con_gr <- function(v, title) {
       geom_point(aes(y = real_gross, color = 'Actual')) + 
       geom_point(aes(y = pred, color = 'Predicted')) + 
       scale_y_log10() + scale_x_log10() + 
-      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction',
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction',
            x = title) + 
-      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red')) +
+      theme(legend.position="bottom")
   })
 }
 cat_gr <- function(v, title, flip = F) {
@@ -560,11 +612,13 @@ cat_gr <- function(v, title, flip = F) {
       ggplot(aes_string(x = var)) + 
       geom_boxplot(aes(y = real_gross)) + 
       # include mean 
-      stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
+      stat_summary(aes(y = real_gross, color = 'Actual Mean'), fun.y = mean, geom = 'point', size = 4) +
       geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-                 aes(y = mean), color = 'red', size = 2) +
+                 aes(y = mean, color = 'Predicted Mean'), size = 2) +
       scale_y_log10() + 
-      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
+      theme(legend.position="bottom") + 
+      scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black')) +
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction', 
            x = title)
     if (flip) {
       gr + coord_flip()
@@ -574,7 +628,7 @@ cat_gr <- function(v, title, flip = F) {
   })
 }
 
-con_gr('real_budget', 'Log Real Budget')
+con_gr('real_budget', 'Log Real Budget ($)')
 con_gr('imdb_score', 'Log IMDB Score')
 con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
 
@@ -591,8 +645,9 @@ train %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
-  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  theme(legend.position="bottom") + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
 
@@ -632,8 +687,8 @@ train %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
-  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted: Budget Only') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
 ```{r simple_resid_show, results = 'hide', warning = F, message = F}
@@ -644,9 +699,10 @@ gr_con <- function(v, title, xtitle) {
   lapply(v, function(var) {
     train_resid_simple %>% 
       ggplot() + 
-      geom_point(aes_string(str_c(var, '_log'), y = 'lresid')) +
+      geom_point(aes_string(var, y = 'lresid')) +
       geom_hline(aes(yintercept = 0)) + 
-      labs(y = 'Log Residual', title = title, x = xtitle)
+      labs(y = 'Log Residual', title = title, x = xtitle) + 
+      scale_x_log10()
   })
 }
 
@@ -666,7 +722,7 @@ gr_cat <- function(v, title, xtitle, flip = F) {
   })
 }
 
-gr_con('real_budget', 'Log Residual: Random Relationship', 'Log Real Budget')
+gr_con('real_budget', 'Log Residual: Random Relationship', 'Log Real Budget ($)')
 gr_con('imdb_score', 'Log Residual: Non-Random Relationship', 'Log IMDB Score')
 gr_cat('content_rating', 'Log Residual: Non-Random Relationship', 'Content Rating')
 gr_cat('year', 'Log Residual: Non-Random Relationship', 'Year', flip = T)
@@ -729,7 +785,7 @@ lapply(c('content_rating'), function(var) {
     geom_jitter(alpha = .3) + 
     geom_point(data = train_resid %>% filter(lresid > 2.5), color = 'red') +
     geom_text_repel(aes(label = movie_title), data = label, nudge_x = -.6, segment.color = NA) +
-    labs(x = label(train_resid[var]))
+    labs(x = label(train_resid[var]), y = 'Log Residual', title = 'Log Residual Plot: Outliers')
 }) 
 
 lapply(c('real_budget', 'imdb_score'), function(var) {
@@ -739,7 +795,7 @@ lapply(c('real_budget', 'imdb_score'), function(var) {
     geom_point() +
     geom_point(data = train_resid %>% filter(lresid > 2.5), color = 'red') +
     geom_text_repel(aes(label = movie_title), data = label, segment.color = NA) +
-    labs(x = label(train_resid[var]))
+    labs(x = label(train_resid[var]), y = 'Log Residual', title = 'Log Residual Plot: Outliers')
 })
 
 ```
@@ -792,9 +848,10 @@ con_gr <- function(v, title) {
       geom_point(aes(y = real_gross, color = 'Actual')) + 
       geom_point(aes(y = pred, color = 'Predicted')) + 
       scale_y_log10() + scale_x_log10() + 
-      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction',
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction',
            x = title) + 
-      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+      theme(legend.position="bottom") +
+      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
   })
 }
 cat_gr <- function(v, title, flip = F) {
@@ -804,13 +861,14 @@ cat_gr <- function(v, title, flip = F) {
       ggplot(aes_string(x = var)) + 
       geom_boxplot(aes(y = real_gross)) + 
       # include mean 
-      stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+      stat_summary(aes(y = real_gross, color = 'Actual Mean'), fun.y = mean, geom = 'point', size = 4) +
       geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-                 aes(y = mean, color = 'Predicted'), size = 2) +
+                 aes(y = mean, color = 'Predicted Mean'), size = 2) +
       scale_y_log10() + 
-      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted:\nSuccessful Prediction', 
            x = title) +
-    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
+      theme(legend.position="bottom") + 
+    scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black'))
     if (flip) {
       gr + coord_flip()
     } else{
@@ -819,7 +877,7 @@ cat_gr <- function(v, title, flip = F) {
   })
 }
 
-con_gr('real_budget', 'Log Real Budget')
+con_gr('real_budget', 'Log Real Budget ($)')
 con_gr('imdb_score', 'Log IMDB Score')
 con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
 
@@ -839,8 +897,9 @@ train %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
-  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  theme(legend.position="bottom") + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Actual vs Predicted') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
 # Compare Models
@@ -867,18 +926,40 @@ mod_simple2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + content_ra
 summary(mod_simple2)
 anova(mod_simple2)
 rmse(mod_simple2, data = test) 
+
+
+
+mod_simple3 <- lm(real_gross_log ~ real_budget_log,
+               data = test)
+
+summary(mod_simple3)
+anova(mod_simple3)
+rmse(mod_simple3, data = test) 
+
 ```
 
 ```{r output}
 stargazer(mod_simple2, type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod.tex',
-          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', title = 'Final Model Summary',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
+          title = 'Final Model Summary \\\\ Response Variable: Log Real Gross Revenue',
           omit = c('1981', '1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
           '1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
           '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016'),
           covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R'),
           notes = 'Year dummies omitted for presentation purposes', notes.align = 'l', column.sep.width = "-1pt") 
 
-          
+# stargazer anova doesn't let you do nice variable labels: covariate.labels is for column headers in this case
+test_labels <- test %>%
+  rename(`Log Real Budget ($)` = real_budget_log, 
+         `Content Rating` = content_rating,
+         `Log IMDB Score` = imdb_score_log,
+         Year = year)
+mod_simple2_labels <- lm(real_gross_log ~ `Log Real Budget ($)` + `Log IMDB Score` + `Content Rating` + Year,
+               data = test_labels)
+stargazer(anova(mod_simple2_labels), type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod_anova.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
+          title = 'Final Model Model Anova \\\\ Response Variable: Log Real Gross Revenue', summary = F)
+         
           # covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R', '1981', 
           #'1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
           #'1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
@@ -937,9 +1018,9 @@ con_gr <- function(v, title) {
       geom_point(aes(y = real_gross, color = 'Actual')) + 
       geom_point(aes(y = pred, color = 'Predicted')) + 
       scale_y_log10() + scale_x_log10() + 
-      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction',
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\n Successful Prediction',
            x = title) + 
-      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red')) 
   })
 }
 cat_gr <- function(v, title, flip = F) {
@@ -949,13 +1030,13 @@ cat_gr <- function(v, title, flip = F) {
       ggplot(aes_string(x = var)) + 
       geom_boxplot(aes(y = real_gross)) + 
       # include mean 
-      stat_summary(aes(y = real_gross, color = 'Mean'), fun.y = mean, geom = 'point', size = 4) +
+      stat_summary(aes(y = real_gross, color = 'Actual Mean'), fun.y = mean, geom = 'point', size = 4) +
       geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-                 aes(y = mean, color = 'Predicted'), size = 2) +
+                 aes(y = mean, color = 'Predicted Mean'), size = 2) +
       scale_y_log10() + 
-      labs(y = 'Log Real Gross Revenue', title = 'Revenue Actual vs Predicted: Log Scale \n Successful Prediction', 
+      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\n Successful Prediction', 
            x = title) + 
-    scale_color_manual(name = '', values = c('Predicted' = 'red', 'Mean' = 'black'))
+    scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black'))
     if (flip) {
       gr + coord_flip()
     } else{
@@ -964,7 +1045,7 @@ cat_gr <- function(v, title, flip = F) {
   })
 }
 
-con_gr('real_budget', 'Log Real Budget')
+con_gr('real_budget', 'Log Real Budget ($)')
 con_gr('imdb_score', 'Log IMDB Score')
 con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
 
@@ -984,7 +1065,11 @@ test %>%
   geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
   geom_freqpoly(aes(x = pred, color = 'Predicted')) +
   scale_x_log10() + 
-  labs(x = 'Log Real Gross Revenue', y = 'Count') + 
-  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'blue'))
+  theme(legend.position="bottom") + 
+  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Real Revenue Real vs Predicted') + 
+  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
 ```
 
+```{r}
+dev.off()
+```
