@@ -61,15 +61,6 @@ label(train$imdb_score) <- 'IMDB Score'
 label(train$imdb_score_log) <- 'Log IMDB Score'
 label(train$content_rating) <- 'Content Rating'
 label(train$year) <- 'Year'
-
-label(test$real_budget) <- 'Real Budget ($)'
-label(test$real_gross) <- 'Real Gross Revenue ($)'
-label(test$real_budget_log) <- 'Log Real Budget ($)'
-label(test$real_gross_log) <- 'Log Real Gross Revenue ($)'
-label(test$imdb_score) <- 'IMDB Score'
-label(test$imdb_score_log) <- 'Log IMDB Score'
-label(test$content_rating) <- 'Content Rating'
-label(test$year) <- 'Year'
 ```
 
 
@@ -765,6 +756,29 @@ mod_simple <- lm(real_gross_log ~ real_budget_log, data = train %>% filter(!is.n
 anova(mod_simple, mod_simple2)
 ```
 
+```{r output}
+stargazer(mod_simple2, type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
+          title = 'Final Model Summary \\\\ Response Variable: Log Real Gross Revenue',
+          omit = c('1981', '1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
+          '1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
+          '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016'),
+          covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R'),
+          notes = 'Year dummies omitted for presentation purposes', notes.align = 'l', column.sep.width = "-1pt") 
+
+# stargazer anova doesn't let you do nice variable labels: covariate.labels is for column headers in this case
+train_labels <- train %>%
+  rename(`Log Real Budget ($)` = real_budget_log, 
+         `Content Rating` = content_rating,
+         `Log IMDB Score` = imdb_score_log,
+         Year = year)
+mod_simple2_labels <- lm(real_gross_log ~ `Log Real Budget ($)` + `Log IMDB Score` + `Content Rating` + Year,
+               data = train_labels)
+stargazer(anova(mod_simple2_labels), type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod_anova.tex',
+          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
+          title = 'Final Model Model Anova \\\\ Response Variable: Log Real Gross Revenue', summary = F)
+```
+
 ```{r simple_resid2, eval = F}
 gr_resid(mod_simple2)
 ```
@@ -912,162 +926,10 @@ train %>%
 *  However, given that the predictions etc. are so similar, it is better to go with the simpler model. Worry about over-fitting with the genre model. Especially because some of the genres don't have that many observations. 
 *  Main take away is that budget has the strongest, most significant relationship with revenue. The model with just budget had a RMSE that was only slightly higher (.65 vs .62) and an R-squared that was only slightly lower (.45 vs .46) than the models with more variables. Also, the other variables that we add to the model had fairly close to random relationships with the residuals from the model with just budget. 
   +  However, predicted vs actual histogram of real gross shows that it is not perfect. Model with the three extra variables does a better job predicting. 
-
-# Fit Final Model on the Test Set
-
-*  Similar results. Predictions are occasionally a bit off, but by in large on track. Variables have random relationship with residuals.  
-*  Year becomes insignificant (or significant at a low level) in anova
-*  Only two NC-17 movies in test set
-
-```{r mod_test}
-mod_simple2 <- lm(real_gross_log ~ real_budget_log + imdb_score_log + content_rating + year,
-               data = test)
-
-summary(mod_simple2)
-anova(mod_simple2)
-rmse(mod_simple2, data = test) 
-
-
-
-mod_simple3 <- lm(real_gross_log ~ real_budget_log,
-               data = test)
-
-summary(mod_simple3)
-anova(mod_simple3)
-rmse(mod_simple3, data = test) 
-
-```
-
-```{r output}
-stargazer(mod_simple2, type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod.tex',
-          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
-          title = 'Final Model Summary \\\\ Response Variable: Log Real Gross Revenue',
-          omit = c('1981', '1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
-          '1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
-          '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016'),
-          covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R'),
-          notes = 'Year dummies omitted for presentation purposes', notes.align = 'l', column.sep.width = "-1pt") 
-
-# stargazer anova doesn't let you do nice variable labels: covariate.labels is for column headers in this case
-test_labels <- test %>%
-  rename(`Log Real Budget ($)` = real_budget_log, 
-         `Content Rating` = content_rating,
-         `Log IMDB Score` = imdb_score_log,
-         Year = year)
-mod_simple2_labels <- lm(real_gross_log ~ `Log Real Budget ($)` + `Log IMDB Score` + `Content Rating` + Year,
-               data = test_labels)
-stargazer(anova(mod_simple2_labels), type = 'latex', out = 'C:/Users/Gimli/Documents/DS5110/project/output/final_mod_anova.tex',
-          no.space = T, nobs = T, dep.var.caption = '', align = T, dep.var.labels = '', 
-          title = 'Final Model Model Anova \\\\ Response Variable: Log Real Gross Revenue', summary = F)
-         
-          # covariate.labels = c('Log Real Budget', 'Log IMDB Score', 'NC17', 'PG', 'PG13', 'R', '1981', 
-          #'1982', '1983', '1984', '1985', '1986', '1987', '1988', '1989', '1990', '1991', '1992', '1993', 
-          #'1994', '1995', '1996', '1997', '1998', '1999', '2000', '2001', '2002', '2003', '2004', '2005', 
-          #'2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013', '2014', '2015', '2016', 'Constant'))
-```
-
-```{r simple_resid_test, eval = F}
-gr_resid(mod_simple2, df = test)
-```
-
-```{r mod_simple_qq_test}
-test %>% 
-  add_residuals(mod_simple2,'lresid') %>% 
-  ggplot(aes(sample = lresid)) + 
-    geom_qq() + 
-    geom_qq_line() + 
-    labs(title = 'Residual QQPlot: Deviation at Tails', 
-       x = 'Theoretical Quantiles', y = 'Sample Quantiles') 
-```
-
-```{r pred_mod_simple_individ_test, fig.show = 'hide', results = 'hide', warning = F, message = F}
-test_pred <- test %>% 
-  add_predictions(mod_simple2, 'lpred') %>%
-  mutate(pred = 10^lpred)
-
-# point because many factors. won't just be a single coefficient determining
-  # SEE BOOK where did prediction based on a bunch of variables 
-lapply(c('real_budget', 'director_facebook_likes', 'cast_total_facebook_likes', 'imdb_score'), function(var) {  
-    test_pred %>%
-    ggplot(aes_string(x = var)) + 
-    geom_point(aes(y = real_gross, color = 'Actual')) + 
-    geom_point(aes(y = pred, color = 'Predicted')) + 
-    scale_y_log10() + scale_x_log10()
-})
-
-# predictions against other genres
-lapply(c('content_rating', 'year', 'total_oscars_actor', 'total_oscars_director', all_genre_vars), function(var) {
-  test_pred %>% 
-    ggplot(aes_string(x = var)) + 
-    geom_boxplot(aes(y = real_gross)) + 
-    # include mean 
-    stat_summary(aes(y = real_gross), fun.y = mean, geom = 'point', size = 4) +
-    geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-               aes(y = mean), color = 'red', size = 2) +
-    scale_y_log10() 
-})
-```
-
-```{r pred_mod_simple_individ_show_test, echo = F, results = 'hide', warning = F, message = F}
-
-# predictions against included variables
-con_gr <- function(v, title) {
-  lapply(c(v), function(var) {  
-      test_pred %>%
-      ggplot(aes_string(x = var)) + 
-      geom_point(aes(y = real_gross, color = 'Actual')) + 
-      geom_point(aes(y = pred, color = 'Predicted')) + 
-      scale_y_log10() + scale_x_log10() + 
-      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\nSuccessful Prediction',
-           x = title) + 
-      scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red')) 
-  })
-}
-cat_gr <- function(v, title, flip = F) {
-  lapply(v, function(var) {
-    gr <- test_pred %>% 
-      filter(!is.na(!!rlang::sym(var))) %>%
-      ggplot(aes_string(x = var)) + 
-      geom_boxplot(aes(y = real_gross)) + 
-      # include mean 
-      stat_summary(aes(y = real_gross, color = 'Actual Mean'), fun.y = mean, geom = 'point', size = 4) +
-      geom_point(data = train_pred %>% group_by(!!rlang::sym(var)) %>% summarise(mean = mean(pred)),
-                 aes(y = mean, color = 'Predicted Mean'), size = 2) +
-      scale_y_log10() + 
-      labs(y = 'Log Real Gross Revenue ($)', title = 'Real Revenue Actual vs Predicted\nSuccessful Prediction', 
-           x = title) + 
-    scale_color_manual(name = '', values = c('Predicted Mean' = 'red', 'Actual Mean' = 'black'))
-    if (flip) {
-      gr + coord_flip()
-    } else{
-      gr
-    }
-  })
-}
-
-con_gr('real_budget', 'Log Real Budget ($)')
-con_gr('imdb_score', 'Log IMDB Score')
-con_gr('cast_total_facebook_likes', ' Log Cast Total Facebook Likes')
-
-cat_gr('content_rating', 'Content Rating')
-cat_gr('year', 'Year', flip = T)
-cat_gr('Animation', 'Animation')
-cat_gr('Adventure', 'Adventure')
-cat_gr('Documentary', 'Documentary')
-
-```
-
-```{r pred_simple_test}
-test %>% 
-  add_predictions(mod_simple2, 'lpred') %>%  
-  mutate(pred = 10^lpred) %>%
-  ggplot() +
-  geom_freqpoly(aes(x = real_gross, color = 'Actual')) + 
-  geom_freqpoly(aes(x = pred, color = 'Predicted')) +
-  scale_x_log10() + 
-  theme(legend.position="bottom") + 
-  labs(x = 'Log Real Gross Revenue ($)', y = 'Count', title = 'Histogram Log Real Revenue Real vs Predicted') + 
-  scale_color_manual(name = '', values = c(Actual = 'black', Predicted = 'red'))
+  
+# Final Statistics on Test Set
+```{r test_rmse}
+rmse(mod_simple2, data = test)
 ```
 
 ```{r}
